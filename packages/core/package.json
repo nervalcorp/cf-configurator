@@ -1,0 +1,8 @@
+{
+  "name": "@wic/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Walk-in configurator rules engine: params in, component tree out. No DOM, no Three.js.",
+  "exports": { ".": "./src/index.ts" }
+}

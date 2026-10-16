@@ -1,0 +1,19 @@
+{
+  "name": "walk-in-configurator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev -w @wic/web",
+    "build": "npm run build -w @wic/web",
+    "preview": "npm run preview -w @wic/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p packages/core && tsc -p apps/web --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

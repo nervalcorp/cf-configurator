@@ -1,0 +1,42 @@
+/*
+ * Design tokens. Neutral is the default skin, carried over from the icoolaca
+ * build. A brand overrides these under [data-theme="<id>"]; components only
+ * ever read the variables.
+ */
+:root {
+  --bg: #f0f2f5;
+  --canvas-bg: #d8dce3;
+  --panel-bg: #fff;
+  --panel-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 12px 40px rgba(0, 0, 0, 0.08);
+  --nav-bg: #1e293b;
+  --nav-text: #94a3b8;
+  --nav-text-hover: #e2e8f0;
+  --accent: #0891b2;
+  --accent-hover: #0e7490;
+  --accent-light: #ecfeff;
+  --accent-bg: rgba(8, 145, 178, 0.08);
+  --on-accent: #fff;
+  --danger: #e11d48;
+  --danger-bg: #fff1f2;
+  --text-dark: #0f172a;
+  --text-mid: #475569;
+  --text-light: #94a3b8;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --input-bg: #f8fafc;
+  --tab-bg: #f1f5f9;
+  --radius: 8px;
+  --font-ui: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --panel-w: 360px;
+  /* floor plan canvas */
+  --fp-bg: #fafbfc;
+  --fp-grid: #e8ecf0;
+  --fp-line: #0891b2;
+  --fp-door: #dd3333;
+}
+
+/* Example brand override, fill in with real tokens:
+[data-theme='icc'] { --accent: #…; --accent-hover: #…; --nav-bg: #…; }
+[data-theme='icoola'] { --accent: #…; --nav-bg: #…; }
+*/
