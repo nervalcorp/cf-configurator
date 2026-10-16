@@ -160,8 +160,7 @@ export class SceneController {
   // ── internals ──
 
   private keepSet() {
-    const m = this.mats;
-    return new Set<THREE.Material>([m.exterior, m.roof, m.interior, m.floor, m.doorLeaf, m.frame, m.threshold, m.chrome, m.highlight, m.edge, m.dimLine]);
+    return new Set<THREE.Material>(this.mats.shared());
   }
 
   private placeKeyLight() {

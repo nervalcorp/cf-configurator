@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHAPES, area, doorWallLength, findDoorEdge, footprint, inToMm, isClockwise, jointNumber, mmToIn, panelLetter } from '../src';
+import { SHAPES, area, doorWallLength, findDoorEdge, footprint, inToMm, isClockwise, jointNumber, mmToIn, wallFrames, wallLetter } from '../src';
 
 const W = inToMm(150);
 const D = inToMm(150);
@@ -52,22 +52,44 @@ describe('door wall', () => {
 });
 
 describe('labels', () => {
-  it('letters the door wall A/B and the next wall counter-clockwise C', () => {
+  it('letters the front wall A, then counter-clockwise on the plan', () => {
     const n = 4;
-    const door = 2;
-    expect(panelLetter(door, door, n, 'left')).toBe('A');
-    expect(panelLetter(door, door, n, 'right')).toBe('B');
-    expect(panelLetter(1, door, n)).toBe('C');
-    expect(panelLetter(0, door, n)).toBe('D');
-    expect(panelLetter(3, door, n)).toBe('E');
+    const front = 2;
+    expect(wallLetter(front, front, n)).toBe('A');
+    expect(wallLetter(1, front, n)).toBe('B');
+    expect(wallLetter(0, front, n)).toBe('C');
+    expect(wallLetter(3, front, n)).toBe('D');
   });
 
-  it('numbers joint 1 at the left end of the door wall', () => {
+  it('numbers joint 1 at the left end of the front wall', () => {
     const fp = footprint('rectangle', W, D, 0, 0);
     const door = findDoorEdge(fp);
     const joints = fp.map((_, i) => jointNumber(i, fp, door));
     const j1 = joints.indexOf(1);
     expect(fp[j1]).toEqual([0, D]);
     expect([...joints].sort()).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('wall frames', () => {
+  const T = inToMm(4);
+  const frames = wallFrames(footprint('rectangle', W, D, 0, 0), T);
+  it('runs between the corner posts', () => {
+    frames.forEach((f) => expect(mmToIn(f.length)).toBeCloseTo(142, 6));
+  });
+  it('starts the front wall at its left end, seen from outside', () => {
+    const a = frames.find((f) => f.letter === 'A')!;
+    expect(a.u[0]).toBeCloseTo(1, 9);
+    expect(a.u[1]).toBeCloseTo(0, 9);
+    expect(a.n[1]).toBeCloseTo(1, 9);
+    expect(a.origin[0]).toBeCloseTo(T, 6);
+    expect(a.origin[1]).toBeCloseTo(D - T, 6);
+  });
+  it('faces every wall outward with u to the right', () => {
+    frames.forEach((f) => {
+      // u is n turned clockwise on the plan: the right-hand side seen from outside
+      expect(f.u[0]).toBeCloseTo(f.n[1], 9);
+      expect(f.u[1]).toBeCloseTo(-f.n[0], 9);
+    });
   });
 });

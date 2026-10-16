@@ -1,26 +1,37 @@
 /**
- * 2D floor plan editor. Draws the footprint from core and drags vertices
- * through core's pickHandle/dragHandle, so the plan and the 3D view can never
- * disagree. The view scale is frozen while dragging so the shape doesn't
- * rescale under the pointer.
+ * 2D floor plan. Draws the footprint, walls and doors from core, and edits
+ * through core functions so the plan and the 3D view never disagree.
+ *
+ * mode "shape": drag corners to resize the box or its cut-out.
+ * mode "doors": click a door to select it, drag it along its wall, or click
+ *               another wall to move the selected door there.
+ *
+ * The view scale is frozen while dragging so the shape doesn't rescale under
+ * the pointer.
  */
 import { useEffect, useRef } from 'react';
 import {
   type Compartment,
   type DragHandle,
   type Vec2,
+  type WallFrame,
   dragHandle,
   edgeLength,
   edgeNormal,
-  findDoorEdge,
+  findFrontEdge,
   footprint,
   formatInches,
+  getDoorFamily,
   inToMm,
   isClockwise,
   jointNumber,
+  moveDoor,
   offsetPolygon,
-  panelLetter,
+  offsetRange,
   pickHandle,
+  updateDoor,
+  wallFrames,
+  wallPoint,
 } from '@wic/core';
 import { useActiveCompartment, useStore } from '../store';
 
@@ -34,7 +45,7 @@ interface View {
   oy: number;
 }
 
-/** Fit the footprint plus the door swing (which hangs off the front) into the canvas. */
+/** Fit the footprint plus door swings (which hang off the walls) into the canvas. */
 function fitView(fp: Vec2[], swing: number): View {
   let maxX = 0;
   let maxY = 0;
@@ -43,31 +54,42 @@ function fitView(fp: Vec2[], swing: number): View {
     maxY = Math.max(maxY, y);
   }
   const LABEL = 30;
-  const scale = Math.min((SIZE - PAD * 2) / (maxX || 1), (SIZE - PAD * 2 - LABEL) / (maxY + swing || 1));
-  const h = (maxY + swing) * scale + LABEL;
-  return { scale, ox: (SIZE - maxX * scale) / 2, oy: (SIZE - h) / 2 };
+  const span = Math.max(maxX + swing * 2, maxY + swing * 2);
+  const scale = (SIZE - PAD * 2 - LABEL) / (span || 1);
+  return { scale, ox: (SIZE - maxX * scale) / 2, oy: (SIZE - maxY * scale) / 2 };
 }
 
 const toCanvas = (v: View, [x, y]: Vec2): Vec2 => [v.ox + x * v.scale, v.oy + y * v.scale];
 const toPlan = (v: View, cx: number, cy: number): Vec2 => [(cx - v.ox) / v.scale, (cy - v.oy) / v.scale];
 
-function css(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function css(name: string, fallback: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, active: number) {
-  const fp = footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
+const fpOf = (c: Compartment) => footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
+const maxSwing = (c: Compartment) =>
+  c.doors.reduce((m, d) => Math.max(m, getDoorFamily(d.family).kind === 'swing' ? getDoorFamily(d.family).width : inToMm(12)), inToMm(12));
+
+/** Project a plan point onto a wall: distance along it and distance from its outside face. */
+function project(f: WallFrame, T: number, p: Vec2) {
+  const dx = p[0] - f.origin[0];
+  const dy = p[1] - f.origin[1];
+  return { along: dx * f.u[0] + dy * f.u[1], out: dx * f.n[0] + dy * f.n[1] - T };
+}
+
+function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: 'shape' | 'doors', active: number, selected: string | null) {
+  const fp = fpOf(c);
   const n = fp.length;
   const cw = isClockwise(fp);
-  const door = findDoorEdge(fp);
-  const line = css('--fp-line') || '#0891b2';
-  const doorCol = css('--fp-door') || '#dd3333';
+  const front = findFrontEdge(fp);
+  const frames = wallFrames(fp, c.wallThickness);
+  const line = css('--fp-line', '#0891b2');
+  const doorCol = css('--fp-door', '#dd3333');
   const P = (p: Vec2) => toCanvas(view, p);
 
   ctx.clearRect(0, 0, SIZE, SIZE);
-  ctx.strokeStyle = css('--fp-grid') || '#e8ecf0';
+  ctx.strokeStyle = css('--fp-grid', '#e8ecf0');
   ctx.lineWidth = 0.5;
-  // 1 ft grid aligned to the shape's origin
   const step = 304.8 * view.scale;
   for (let x = view.ox % step; x < SIZE; x += step) {
     ctx.beginPath();
@@ -88,7 +110,6 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, active:
     ctx.closePath();
   };
 
-  // Outline, hatch, inner face
   path(fp);
   ctx.save();
   ctx.globalAlpha = 0.06;
@@ -118,7 +139,7 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, active:
   ctx.stroke();
   ctx.restore();
 
-  // Edge lengths outside, panel letters inside
+  // Edge lengths outside, wall letters inside
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (let i = 0; i < n; i++) {
@@ -126,107 +147,169 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, active:
     const b = fp[(i + 1) % n];
     const [nx, ny] = edgeNormal(a, b, cw);
     const [mx, my] = P([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
-    const txt = formatInches(edgeLength(a, b));
-    ctx.font = '600 11px "IBM Plex Mono", monospace';
-    const tw = ctx.measureText(txt).width;
-    const lx = mx + nx * 20;
-    const ly = my + ny * 20;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.fillRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
-    ctx.fillStyle = '#1e293b';
-    ctx.fillText(txt, lx, ly);
-
-    ctx.font = '700 12px Outfit, sans-serif';
-    ctx.fillStyle = line;
-    if (i === door) {
-      const span = Math.abs(b[0] - a[0]);
-      ctx.fillText('A', mx - span * 0.28 * view.scale - nx * 22, my - ny * 22);
-      ctx.fillText('B', mx + span * 0.28 * view.scale - nx * 22, my - ny * 22);
-    } else {
-      ctx.fillText(panelLetter(i, door, n), mx - nx * 22, my - ny * 22);
+    if (mode === 'shape') {
+      const txt = formatInches(edgeLength(a, b));
+      ctx.font = '600 11px "IBM Plex Mono", monospace';
+      const tw = ctx.measureText(txt).width;
+      const lx = mx + nx * 20;
+      const ly = my + ny * 20;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx - tw / 2 - 5, ly - 9, tw + 10, 18);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillText(txt, lx, ly);
     }
+    ctx.font = '700 13px Outfit, sans-serif';
+    ctx.fillStyle = line;
+    ctx.fillText(frames[i].letter, mx - nx * 24, my - ny * 24);
   }
 
-  // Door opening, leaf and swing
-  {
-    const a = fp[door];
-    const b = fp[(door + 1) % n];
-    const left = Math.min(a[0], b[0]) + c.wallThickness + c.door.offset;
-    const right = left + c.door.width;
-    const y = a[1];
-    const [, ny] = edgeNormal(a, b, cw);
-    const hingeRight = c.door.hinge === 'right';
-    const hinge: Vec2 = [hingeRight ? right : left, y];
-    const open: Vec2 = [hinge[0], y + ny * c.door.width];
-    ctx.strokeStyle = doorCol;
-    ctx.lineWidth = 4;
+  // Doors
+  c.doors.forEach((d, k) => {
+    const f = frames[d.wall];
+    if (!f) return;
+    const fam = getDoorFamily(d.family);
+    const T = c.wallThickness;
+    const W = fam.width;
+    const isSel = mode === 'doors' && d.id === selected;
+    const col = isSel ? doorCol : mode === 'doors' ? '#94a3b8' : doorCol;
+    const outside = (along: number, out: number) => P(wallPoint(f, along, T + out));
+    const r = W * view.scale;
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    // opening
+    ctx.lineWidth = isSel ? 6 : 4;
     ctx.beginPath();
-    ctx.moveTo(...P([left, y]));
-    ctx.lineTo(...P([right, y]));
+    ctx.moveTo(...outside(d.offset, -T / 2));
+    ctx.lineTo(...outside(d.offset + W, -T / 2));
     ctx.stroke();
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(...P(hinge));
-    ctx.lineTo(...P(open));
-    ctx.stroke();
-    const [hx, hy] = P(hinge);
-    const r = c.door.width * view.scale;
-    const outward = ny > 0 ? Math.PI / 2 : -Math.PI / 2;
-    const closed = hingeRight ? Math.PI : 0;
-    ctx.setLineDash([5, 4]);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(hx, hy, r, Math.min(closed, outward), Math.max(closed, outward));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = doorCol;
-    ctx.beginPath();
-    ctx.arc(hx, hy, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.font = '600 11px Outfit, sans-serif';
-    const [dx, dy] = P([(left + right) / 2, y]);
-    ctx.fillText(`${formatInches(c.door.width)} door`, dx, dy + ny * (r + 16));
-  }
+    ctx.lineWidth = isSel ? 2.5 : 1.5;
+    const angleOf = (v: Vec2) => Math.atan2(v[1], v[0]);
+    if (fam.kind === 'swing') {
+      const hingeAlong = d.hinge === 'right' ? d.offset + W : d.offset;
+      const dir = d.swing === 'out' ? 1 : -1;
+      const hingePt = outside(hingeAlong, dir > 0 ? 0 : -T);
+      const leafDir: Vec2 = [f.n[0] * dir, f.n[1] * dir];
+      const closedDir: Vec2 = d.hinge === 'right' ? [-f.u[0], -f.u[1]] : [f.u[0], f.u[1]];
+      ctx.beginPath();
+      ctx.moveTo(...hingePt);
+      ctx.lineTo(hingePt[0] + leafDir[0] * r, hingePt[1] + leafDir[1] * r);
+      ctx.stroke();
+      const a1 = angleOf(leafDir);
+      const a2 = angleOf(closedDir);
+      let diff = a2 - a1;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(hingePt[0], hingePt[1], r, a1, a2, diff < 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(hingePt[0], hingePt[1], 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (fam.kind === 'slide') {
+      const shift = d.hinge === 'right' ? W : -W;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(...outside(d.offset - 100, 60));
+      ctx.lineTo(...outside(d.offset + W + 100, 60));
+      ctx.stroke();
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(...outside(d.offset - 100 + shift, 110));
+      ctx.lineTo(...outside(d.offset + W + 100 + shift, 110));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (fam.kind === 'rollup') {
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      const p1 = outside(d.offset - 60, 0);
+      const p2 = outside(d.offset + W + 60, 0);
+      const p3 = outside(d.offset + W + 60, 380);
+      const p4 = outside(d.offset - 60, 380);
+      ctx.moveTo(...p1);
+      ctx.lineTo(...p2);
+      ctx.lineTo(...p3);
+      ctx.lineTo(...p4);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // traffic: two-way swing, short arcs both sides
+      const leaves = d.family === 'traffic-double' ? 2 : 1;
+      const lw = W / leaves;
+      for (let s = 0; s < leaves; s++) {
+        const hingeAlong = leaves === 2 ? (s === 0 ? d.offset : d.offset + W) : d.offset + W;
+        for (const dir of [1, -1]) {
+          const hp = outside(hingeAlong, dir > 0 ? 0 : -T);
+          const lr = lw * view.scale;
+          const leafDir: Vec2 = [f.n[0] * dir, f.n[1] * dir];
+          const closedDir: Vec2 = hingeAlong === d.offset ? [f.u[0], f.u[1]] : [-f.u[0], -f.u[1]];
+          const a1 = angleOf(leafDir);
+          const a2 = angleOf(closedDir);
+          let diff = a2 - a1;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          ctx.setLineDash([3, 4]);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(hp[0], hp[1], lr, a1, a2, diff < 0);
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+    }
+    // label
+    ctx.font = `${isSel ? 700 : 600} 11px Outfit, sans-serif`;
+    const lab = outside(d.offset + W / 2, Math.min(W, inToMm(40)) + 140);
+    ctx.fillStyle = col;
+    ctx.fillText(`D${k + 1}`, ...lab);
+  });
 
-  // Vertex handles and joint numbers
+  // Corner handles (shape mode) and joint numbers
   for (let i = 0; i < n; i++) {
     const [x, y] = P(fp[i]);
-    ctx.fillStyle = i === active ? line : '#fff';
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, i === active ? 8 : 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    // label on the outside diagonal
+    if (mode === 'shape') {
+      ctx.fillStyle = i === active ? line : '#fff';
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, i === active ? 8 : 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     const prev = fp[(i - 1 + n) % n];
     const next = fp[(i + 1) % n];
     const n1 = edgeNormal(prev, fp[i], cw);
     const n2 = edgeNormal(fp[i], next, cw);
     ctx.font = '600 10px "IBM Plex Mono", monospace';
     ctx.fillStyle = '#64748b';
-    ctx.fillText(`J${jointNumber(i, fp, door)}`, x + (n1[0] + n2[0]) * 18, y + (n1[1] + n2[1]) * 18);
+    ctx.fillText(`J${jointNumber(i, fp, front)}`, x + (n1[0] + n2[0]) * 18, y + (n1[1] + n2[1]) * 18);
   }
 }
 
-export function FloorPlan() {
+type Drag =
+  | { type: 'corner'; handle: DragHandle; view: View; vertex: number }
+  | { type: 'door'; id: string; view: View; grab: number };
+
+export function FloorPlan({ mode }: { mode: 'shape' | 'doors' }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const comp = useActiveCompartment();
-  const editCompartment = useStore((s) => s.editCompartment);
-  const commit = useStore((s) => s.commit);
-  const drag = useRef<{ handle: DragHandle; view: View; vertex: number } | null>(null);
+  const selected = useStore((s) => s.ui.selectedDoor);
+  const { editCompartment, commit, setUi } = useStore.getState();
+  const drag = useRef<Drag | null>(null);
 
-  const viewNow = () => {
-    const d = drag.current;
-    return d ? d.view : fitView(footprint(comp.shape, comp.boxW, comp.boxD, comp.notchW, comp.notchD), comp.door.width);
-  };
+  const viewNow = () => drag.current?.view ?? fitView(fpOf(comp), maxSwing(comp));
 
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d');
-    if (ctx) draw(ctx, comp, viewNow(), drag.current?.vertex ?? -1);
+    const d = drag.current;
+    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected);
   });
 
   const pos = (e: React.PointerEvent): Vec2 => {
@@ -234,12 +317,35 @@ export function FloorPlan() {
     return [((e.clientX - r.left) * SIZE) / r.width, ((e.clientY - r.top) * SIZE) / r.height];
   };
 
-  const vertexAt = (p: Vec2, v: View) => {
-    const fp = footprint(comp.shape, comp.boxW, comp.boxD, comp.notchW, comp.notchD);
-    return fp.findIndex((q) => {
+  const vertexAt = (p: Vec2, v: View) =>
+    fpOf(comp).findIndex((q) => {
       const [x, y] = toCanvas(v, q);
       return (x - p[0]) ** 2 + (y - p[1]) ** 2 < HIT * HIT;
     });
+
+  /** Nearest wall to a plan point and where along it the point falls. */
+  const wallAt = (planPt: Vec2, v: View) => {
+    const frames = wallFrames(fpOf(comp), comp.wallThickness);
+    let best: { frame: WallFrame; along: number; dist: number } | null = null;
+    for (const f of frames) {
+      const pr = project(f, comp.wallThickness, planPt);
+      const inside = pr.along > -inToMm(6) && pr.along < f.length + inToMm(6);
+      const dist = Math.abs(pr.out + comp.wallThickness / 2) * v.scale;
+      if (inside && dist < 30 && (!best || dist < best.dist)) best = { frame: f, along: pr.along, dist };
+    }
+    return best;
+  };
+
+  const doorAt = (planPt: Vec2, v: View) => {
+    const hit = wallAt(planPt, v);
+    if (!hit) return null;
+    const door = comp.doors.find(
+      (d) =>
+        d.wall === hit.frame.edge &&
+        hit.along >= d.offset - inToMm(4) &&
+        hit.along <= d.offset + getDoorFamily(d.family).width + inToMm(4),
+    );
+    return door ? { door, along: hit.along } : null;
   };
 
   return (
@@ -248,25 +354,65 @@ export function FloorPlan() {
       className="floor-plan"
       width={SIZE}
       height={SIZE}
-      aria-label="Floor plan. Drag a corner to resize the compartment or its cut-out."
+      aria-label={
+        mode === 'shape'
+          ? 'Floor plan. Drag a corner to resize the compartment or its cut-out.'
+          : 'Floor plan. Click a door to select it, drag it along its wall, or click another wall to move it there.'
+      }
       onPointerDown={(e) => {
         const v = viewNow();
-        const vi = vertexAt(pos(e), v);
-        if (vi < 0) return;
-        const handle = pickHandle(comp, vi);
-        if (!handle) return;
-        drag.current = { handle, view: v, vertex: vi };
+        const p = pos(e);
+        if (mode === 'shape') {
+          const vi = vertexAt(p, v);
+          if (vi < 0) return;
+          const handle = pickHandle(comp, vi);
+          if (!handle) return;
+          drag.current = { type: 'corner', handle, view: v, vertex: vi };
+        } else {
+          const planPt = toPlan(v, ...p);
+          const hit = doorAt(planPt, v);
+          if (hit) {
+            setUi({ selectedDoor: hit.door.id });
+            drag.current = { type: 'door', id: hit.door.id, view: v, grab: hit.along - hit.door.offset };
+          } else if (selected) {
+            const w = wallAt(planPt, v);
+            if (w) {
+              const d = comp.doors.find((x) => x.id === selected);
+              const W = d ? getDoorFamily(d.family).width : 0;
+              editCompartment((c) => moveDoor(c, selected, w.frame.edge, w.along - W / 2));
+            }
+            return;
+          } else return;
+        }
         e.currentTarget.setPointerCapture(e.pointerId);
         e.currentTarget.style.cursor = 'grabbing';
       }}
       onPointerMove={(e) => {
         const d = drag.current;
+        const v = viewNow();
         if (!d) {
-          e.currentTarget.style.cursor = vertexAt(pos(e), viewNow()) >= 0 ? 'grab' : 'crosshair';
+          const hot = mode === 'shape' ? vertexAt(pos(e), v) >= 0 : !!doorAt(toPlan(v, ...pos(e)), v);
+          const wall = mode === 'doors' && selected && !hot && wallAt(toPlan(v, ...pos(e)), v);
+          e.currentTarget.style.cursor = hot ? 'grab' : wall ? 'copy' : 'crosshair';
           return;
         }
         const [px, py] = toPlan(d.view, ...pos(e));
-        editCompartment((c) => dragHandle(c, d.handle, [px, py]), { transient: true });
+        if (d.type === 'corner') {
+          editCompartment((c) => dragHandle(c, d.handle, [px, py]), { transient: true });
+        } else {
+          editCompartment(
+            (c) => {
+              const door = c.doors.find((x) => x.id === d.id);
+              const f = door && wallFrames(fpOf(c), c.wallThickness)[door.wall];
+              if (!door || !f) return c;
+              const along = project(f, c.wallThickness, [px, py]).along - d.grab;
+              const [lo, hi] = offsetRange(door, f.length);
+              const snapped = Math.round(along / 25.4) * 25.4;
+              return updateDoor(c, d.id, { offset: Math.min(hi, Math.max(lo, snapped)) });
+            },
+            { transient: true },
+          );
+        }
       }}
       onPointerUp={(e) => {
         if (!drag.current) return;

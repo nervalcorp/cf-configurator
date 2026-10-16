@@ -25,9 +25,10 @@ Add `?theme=<id>` to the URL to pick a brand skin. Only `neutral` is defined so 
 ```
 packages/core     Rules engine. Params in, component tree out. No DOM, no Three.js.
   src/config.ts      Configuration schema (mm), defaults, limits, migrate()
+  src/catalog.ts     Product options and model numbers (ICC spec-widget catalog, under audit)
   src/rules.ts       normalize() and validate(); each issue names the tab that fixes it
   src/geometry.ts    Polygon helpers (winding-based normals, offsets)
-  src/layout/        Shapes, door wall + lettering, buildCompartment(), floor-plan drag
+  src/layout/        Shapes, walls + lettering, doors, buildCompartment(), floor-plan drag
   test/              Vitest
 apps/web          React + Zustand + Three.js app
   src/store.ts       Config, undo/redo, view state
@@ -45,7 +46,25 @@ apps/web          React + Zustand + Three.js app
 - **Normals come from winding, never the centroid.** The centroid moves while a notch is dragged and used to flip panel faces.
 - **The rules engine owns constraints.** The UI may hide options, but `normalize()` is what guarantees a freezer has a floor or a notch stays in range.
 - **Edits are committed or transient.** Drags and slider moves update live as transient edits and commit once on release, so each gesture is one undo step.
-- **Configurations are versioned.** Bump `SCHEMA_VERSION` on breaking changes and teach `migrate()` to read the old shape.
+- **Configurations are versioned.** Bump `SCHEMA_VERSION` on breaking changes and teach `migrate()` to read the old shape. v1 → v2 turned the single front `door` into a `doors` list.
+- **Walls are lettered A, B, C… counter-clockwise on the plan, starting with A at the front wall.** Joint 1 is the left end of wall A.
+- **Anything placed on a wall goes through `wallFrames()`**: an origin at the inside face of the wall's left end (seen from outside), a `u` axis along the wall and an outward normal `n`. Doors use it now; glass doors, shelving and lights will too.
+- **Model numbers live in `catalog.ts`.** They come from the ICC spec-widget catalog and are provisional until the line-up audit closes. Lines marked `CONFIRM` are assumptions.
+
+## Doors
+
+A compartment holds any number of doors, each on any wall. Each door records its wall, its offset along the wall's inside run, its type and its options; its model number is derived from those (for example `ICC-DR-3478CR` = 34" × 78" man door, cooler, right hinge).
+
+| Type | Models | Options |
+| --- | --- | --- |
+| Man door 34" × 78" | ICC-DR-3478 / 13478 C·F L·R, 13478…W | hinge, swing in/out, closer, window (13478 only), handle |
+| Pallet door 48" × 78" | ICC-DR-4878 C·F L·R | hinge, swing, closer, handle |
+| Pallet sliding 54" × 96" | ICC-DR-5496 L·R | slide direction, handle |
+| Forklift sliding 72" × 96" | ICC-DR-7296 L·R | slide direction, handle |
+| Forklift roll-up 96" × 120" | ICC-DR-96120 | none |
+| Traffic, single / double | ICC-DR-3684DS / 7284DS -GR·WH·BK | finish |
+
+Hardware add-ons: closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
 
 ## Brand skins
 
@@ -54,9 +73,10 @@ A skin is a `[data-theme="<id>"]` block in `apps/web/src/theme/tokens.css` plus 
 ## Changes from the icoolaca build
 
 - Three.js r128 with inline OrbitControls/OBJLoader → three 0.186 with the official addons.
-- Door-wall 72" minimum is measured on the real footprint; the old per-notch formula had `br` and `tr` swapped.
+- The fixed 72" door-wall minimum is gone; each door must fit its own wall instead. (The old per-notch formula also had `br` and `tr` swapped.)
+- Walls are one lettered panel each (A, B, C…) instead of the door wall splitting into A and B.
 - Dragging the depth of a `br` notch moved the wrong way; fixed.
-- Door-wall panels no longer paint the exterior finish on their inside face.
+- Wall panels no longer paint the exterior finish on their inside face.
 - The outdoor roof sits on the walls instead of floating 1 ft above them.
 - Not ported yet: custom texture upload, 3D object import and transform gizmo, ramp geometry.
 

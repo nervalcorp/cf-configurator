@@ -6,14 +6,14 @@
  * maps the pointer (footprint mm) to new params. The polygon is regenerated
  * from params, so it can never become degenerate.
  *
- * Change from the original: the door-wall minimum is measured on the actual
- * footprint instead of a per-notch formula, which had `br` and `tr` swapped.
+ * A move is refused when a wall would become too short for the doors on it.
+ * (v1 used a fixed 72" front-wall minimum instead.)
  */
 import type { Compartment } from '../config';
 import { LIMITS } from '../config';
 import { mmToIn, inToMm } from '../units';
 import { type NotchCode, footprint, getShape } from './shapes';
-import { doorWallLength } from './walls';
+import { doorsFit } from './doors';
 
 export type DragHandle =
   | { type: 'box'; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
@@ -43,13 +43,12 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /**
  * New params for a pointer at `p` (footprint mm, origin at the box's back-left).
- * Returns the input unchanged when the move would break the door-wall minimum.
+ * Returns the input unchanged when a wall would get too short for its doors.
  */
 export function dragHandle(c: Compartment, h: DragHandle, p: readonly [number, number]): Compartment {
   const sx = snap(p[0]);
   const sy = snap(p[1]);
-  const ok = (next: Compartment) =>
-    doorWallLength(footprint(next.shape, next.boxW, next.boxD, next.notchW, next.notchD)) >= LIMITS.doorWallMin - 0.01;
+  const ok = doorsFit;
 
   if (h.type === 'box') {
     let next = c;

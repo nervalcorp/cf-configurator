@@ -1,4 +1,4 @@
-import { LIMITS, SHAPES, type Temperature, formatFeetInches, getShape, inToMm, mmToIn } from '@wic/core';
+import { LIMITS, SHAPES, type Temperature, formatFeetInches, getShape, inToMm, mmToIn, setShape } from '@wic/core';
 import { FloorPlan, ShapeThumb } from '../floorplan/FloorPlan';
 import { useActiveCompartment, useStore } from '../store';
 import { Section, Slider, Toggle } from '../shell/controls';
@@ -44,7 +44,7 @@ export function LayoutTab() {
               type="button"
               className={`shape-btn${c.shape === s.id ? ' active' : ''}`}
               aria-pressed={c.shape === s.id}
-              onClick={() => edit((x) => ({ ...x, shape: s.id, notchW: s.nw, notchD: s.nd }))}
+              onClick={() => edit((x) => setShape(x, s.id, s.nw, s.nd))}
             >
               <ShapeThumb shape={s.id} nw={s.nw} nd={s.nd} />
               <span className="shape-btn-label">{s.label}</span>
@@ -54,7 +54,7 @@ export function LayoutTab() {
       </Section>
 
       <Section title="Floor plan" hint="Drag a corner to resize">
-        <FloorPlan />
+        <FloorPlan mode="shape" />
       </Section>
 
       <Section title="Size">

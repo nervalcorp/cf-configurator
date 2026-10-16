@@ -26,6 +26,9 @@ export class Materials {
   frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e6, roughness: 0.4, metalness: 0.08 });
   threshold = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
   chrome = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.2, metalness: 0.75 });
+  glass = new THREE.MeshStandardMaterial({ color: 0x9fb8c8, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.45 });
+  track = new THREE.MeshStandardMaterial({ color: 0x6b7178, roughness: 0.45, metalness: 0.6 });
+  curtain = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.55, metalness: 0.35 });
   highlight = new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.4, emissive: 0x0d9488, emissiveIntensity: 0.35 });
   edge = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.22 });
   dimLine = new THREE.LineBasicMaterial({ color: 0xdd3333 });
@@ -43,7 +46,12 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.highlight];
+    return [this.exterior, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+  }
+
+  /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
+  shared(): THREE.Material[] {
+    return [...this.meshMaterials(), this.edge, this.dimLine];
   }
 
   dispose() {

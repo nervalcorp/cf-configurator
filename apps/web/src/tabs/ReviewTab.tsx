@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SHAPES, buildCompartment, formatFeetInches, formatInches, validate } from '@wic/core';
+import { DOOR_CLOSER_SKU, HANDLES, SHAPES, buildCompartment, formatFeetInches, formatInches, validate } from '@wic/core';
 import { openConfiguration, saveConfiguration } from '../files';
 import { TABS, useActiveCompartment, useStore } from '../store';
 import { Section } from '../shell/controls';
@@ -23,13 +23,29 @@ export function ReviewTab() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const tabLabel = (id: string) => TABS.find((t) => t.id === id)?.label ?? id;
 
+  // Doors and the add-on hardware chosen for them, grouped by model.
+  const parts = (() => {
+    const map = new Map<string, { name: string; sku: string; qty: number }>();
+    const add = (sku: string, name: string) => {
+      const row = map.get(sku);
+      if (row) row.qty += 1;
+      else map.set(sku, { sku, name, qty: 1 });
+    };
+    tree.doors.forEach((d) => add(d.sku, 'Door'));
+    c.doors.forEach((d) => {
+      if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
+      if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
+    });
+    return [...map.values()];
+  })();
+
   const rows: [string, string][] = [
     ['Type', `${config.site.type === 'indoor' ? 'Indoor' : 'Outdoor'} ${c.temperature}`],
     ['Shape', SHAPES.find((s) => s.id === c.shape)?.label ?? c.shape],
     ['Outside size', `${formatFeetInches(c.boxW)} × ${formatFeetInches(c.boxD)} × ${formatFeetInches(c.height)} high`],
     ['Exterior', FINISH_NAMES[c.finishes.exterior]],
     ['Floor', FLOOR_NAMES[c.finishes.floor]],
-    ['Door', `${formatInches(c.door.width)}, hinged ${c.door.hinge}, ${formatInches(c.door.offset)} from the left corner`],
+    ['Doors', c.doors.length ? `${c.doors.length}` : 'None'],
     ['Ramp', c.accessories.ramp === 'none' ? 'None' : c.accessories.ramp === 'interior' ? 'Interior' : 'Exterior'],
   ];
 
@@ -41,7 +57,7 @@ export function ReviewTab() {
             {issues.map((i, k) => (
               <li key={k} className={`issue issue-${i.severity}`}>
                 <span>{i.message}</span>
-                <button type="button" className="issue-fix" onClick={() => setUi({ tab: i.tab })}>
+                <button type="button" className="issue-fix" onClick={() => setUi(i.ref ? { tab: i.tab, selectedDoor: i.ref } : { tab: i.tab })}>
                   Go to {tabLabel(i.tab)}
                 </button>
               </li>
@@ -65,12 +81,13 @@ export function ReviewTab() {
         </dl>
       </Section>
 
-      <Section title="Wall panels" hint="Outside lengths">
+      <Section title="Walls">
         <table className="part-table">
           <thead>
             <tr>
-              <th scope="col">Panel</th>
-              <th scope="col">Length</th>
+              <th scope="col">Wall</th>
+              <th scope="col">Outside</th>
+              <th scope="col">Inside</th>
               <th scope="col">Height</th>
             </tr>
           </thead>
@@ -79,9 +96,10 @@ export function ReviewTab() {
               <tr key={w.letter}>
                 <td>
                   {w.letter}
-                  {w.hasDoor && <span className="part-tag">door</span>}
+                  {w.doors > 0 && <span className="part-tag">{w.doors === 1 ? 'door' : `${w.doors} doors`}</span>}
                 </td>
                 <td>{formatInches(w.length)}</td>
+                <td>{formatInches(w.insideLength)}</td>
                 <td>{formatInches(w.height)}</td>
               </tr>
             ))}
@@ -91,6 +109,29 @@ export function ReviewTab() {
           {tree.parts.filter((p) => p.kind === 'post').length} corner joints. A full part list with part numbers comes with the BOM step.
         </p>
       </Section>
+
+      {parts.length > 0 && (
+        <Section title="Doors and hardware" hint="ICC models, under audit">
+          <table className="part-table">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Model</th>
+                <th scope="col">Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parts.map((p) => (
+                <tr key={p.sku}>
+                  <td>{p.name}</td>
+                  <td>{p.sku}</td>
+                  <td>{p.qty}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
 
       <Section title="Configuration file">
         <div className="button-row">

@@ -1,48 +1,244 @@
-import { LIMITS, type HingeSide, footprint, doorWallLength, formatInches, inToMm, mmToIn } from '@wic/core';
+import {
+  type Compartment,
+  CATALOG_SOURCE,
+  DOOR_CLOSER_SKU,
+  DOOR_FAMILIES,
+  type Door,
+  type DoorFamilyId,
+  HANDLES,
+  type HandleId,
+  type HingeSide,
+  MAN_SERIES,
+  type ManSeries,
+  type Swing,
+  TRAFFIC_FINISHES,
+  type TrafficFinish,
+  addDoor,
+  doorSku,
+  framesFor,
+  formatInches,
+  getDoorFamily,
+  inToMm,
+  mmToIn,
+  moveDoor,
+  offsetRange,
+  removeDoor,
+  updateDoor,
+} from '@wic/core';
+import { FloorPlan } from '../floorplan/FloorPlan';
 import { useActiveCompartment, useStore } from '../store';
-import { Section, Slider, Toggle } from '../shell/controls';
+import { Section, Slider, Switch, Toggle } from '../shell/controls';
 
 export function DoorsTab() {
   const c = useActiveCompartment();
-  const { editCompartment: edit, commit } = useStore.getState();
-  const wall = doorWallLength(footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD));
-  const inside = wall - 2 * c.wallThickness;
-  const maxOffset = Math.max(LIMITS.doorFrame, inside - c.door.width - LIMITS.doorFrame);
-  const minIn = Math.ceil(mmToIn(LIMITS.doorFrame));
-  const maxIn = Math.max(minIn, Math.floor(mmToIn(maxOffset)));
+  const selectedId = useStore((s) => s.ui.selectedDoor);
+  const { editCompartment: edit, setUi } = useStore.getState();
+  const frames = framesFor(c);
+  const sel = c.doors.find((d) => d.id === selectedId) ?? c.doors[0];
+  const patch = (p: Partial<Door>) => sel && edit((x) => updateDoor(x, sel.id, p));
 
   return (
     <>
-      <Section title="Door">
-        <p className="panel-note">
-          {formatInches(c.door.width)} swing door on the front wall (panels A and B). The front wall is {formatInches(wall)} outside.
-        </p>
+      <Section title="Doors on this compartment">
+        {c.doors.length ? (
+          <ul className="door-list">
+            {c.doors.map((d, k) => (
+              <li key={d.id}>
+                <button
+                  type="button"
+                  className={`door-item${sel?.id === d.id ? ' active' : ''}`}
+                  aria-pressed={sel?.id === d.id}
+                  onClick={() => setUi({ selectedDoor: d.id })}
+                >
+                  <span className="door-num">D{k + 1}</span>
+                  <span className="door-sku">{doorSku(d, c.temperature)}</span>
+                  <span className="door-where">
+                    Wall {frames[d.wall]?.letter ?? '?'} · {formatInches(d.offset)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="panel-note">This compartment has no door yet. Add one to get started.</p>
+        )}
+        <div className="button-row">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              const r = addDoor(c);
+              if (!r.id) return;
+              edit(() => r.compartment);
+              setUi({ selectedDoor: r.id });
+            }}
+          >
+            Add door
+          </button>
+          {sel && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger"
+              onClick={() => {
+                const rest = c.doors.filter((d) => d.id !== sel.id);
+                edit((x) => removeDoor(x, sel.id));
+                setUi({ selectedDoor: rest[0]?.id ?? null });
+              }}
+            >
+              Remove D{c.doors.indexOf(sel) + 1}
+            </button>
+          )}
+        </div>
       </Section>
-      <Section title="Hinge side" hint="Seen from outside">
-        <Toggle<HingeSide>
-          label="Hinge side"
-          value={c.door.hinge}
-          onChange={(v) => edit((x) => ({ ...x, door: { ...x.door, hinge: v } }))}
-          options={[
-            { value: 'left', label: 'Left' },
-            { value: 'right', label: 'Right' },
-          ]}
-        />
+
+      <Section title="Floor plan" hint="Drag a door along its wall, or click another wall to move it">
+        <FloorPlan mode="doors" />
       </Section>
-      <Section title="Position">
-        <Slider
-          label="Distance from left corner"
-          value={Math.min(Math.round(mmToIn(c.door.offset)), maxIn)}
-          min={minIn}
-          max={maxIn}
-          step={1}
-          display={formatInches(c.door.offset)}
-          minLabel={`${minIn}"`}
-          maxLabel={`${maxIn}"`}
-          onInput={(v) => edit((x) => ({ ...x, door: { ...x.door, offset: inToMm(v) } }), { transient: true })}
-          onCommit={commit}
-        />
+
+      {sel && <DoorEditor key={sel.id} c={c} door={sel} index={c.doors.indexOf(sel) + 1} patch={patch} />}
+
+      <Section title="Catalog">
+        <p className="panel-note">Model numbers come from the {CATALOG_SOURCE}. Jamb guards, kickplates and pressure-relief vents have no ICC model yet, so they are not offered.</p>
       </Section>
     </>
   );
 }
+
+function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; index: number; patch: (p: Partial<Door>) => void }) {
+    const { editCompartment: edit, commit } = useStore.getState();
+    const frames = framesFor(c);
+    const fam = getDoorFamily(door.family);
+    const f = frames[door.wall];
+    const [lo, hi] = f ? offsetRange(door, f.length) : [0, 0];
+    const fits = hi >= lo;
+    const loIn = Math.ceil(mmToIn(lo));
+    const hiIn = Math.max(loIn, Math.floor(mmToIn(hi)));
+    const swingOrTraffic = fam.kind === 'swing';
+
+    return (
+      <>
+        <Section title={`Door D${index}`} hint={doorSku(door, c.temperature)}>
+          <label className="field">
+            <span className="field-label">Type</span>
+            <select
+              className="custom-select"
+              value={door.family}
+              onChange={(e) => {
+                const family = e.target.value as DoorFamilyId;
+                // Re-seat the door so a wider type still lands where it fits.
+                edit((x) => moveDoor(updateDoor(x, door.id, { family }), door.id, door.wall, door.offset));
+              }}
+            >
+              {DOOR_FAMILIES.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {door.family === 'man' && (
+            <div className="field">
+              <span className="field-label">Series</span>
+              <Toggle<ManSeries> label="Series" value={door.series} onChange={(v) => patch({ series: v })} options={MAN_SERIES.map((s) => ({ value: s.id, label: s.label }))} />
+            </div>
+          )}
+        </Section>
+
+        <Section title="Placement">
+          <div className="field">
+            <span className="field-label">Wall</span>
+            <div className="wall-picker" role="radiogroup" aria-label="Wall">
+              {frames.map((w) => (
+                <button
+                  key={w.edge}
+                  type="button"
+                  role="radio"
+                  aria-checked={door.wall === w.edge}
+                  className={`wall-chip${door.wall === w.edge ? ' active' : ''}`}
+                  onClick={() => edit((x) => moveDoor(x, door.id, w.edge, door.offset))}
+                  title={`Wall ${w.letter}, ${formatInches(w.length)} inside`}
+                >
+                  {w.letter}
+                </button>
+              ))}
+            </div>
+          </div>
+          {fits ? (
+            <Slider
+              label="Distance from left end"
+              value={Math.min(Math.max(Math.round(mmToIn(door.offset)), loIn), hiIn)}
+              min={loIn}
+              max={hiIn}
+              step={1}
+              display={formatInches(door.offset)}
+              minLabel={`${loIn}"`}
+              maxLabel={`${hiIn}"`}
+              onInput={(v) => edit((x) => updateDoor(x, door.id, { offset: inToMm(v) }), { transient: true })}
+              onCommit={commit}
+            />
+          ) : (
+            <p className="panel-error">This door does not fit on wall {f?.letter}. Pick another wall or a smaller door.</p>
+          )}
+          <p className="panel-note">Measured from the inside of the left corner post, seen from outside.</p>
+        </Section>
+
+        {fam.kind !== 'rollup' && fam.kind !== 'traffic' && (
+          <Section title={fam.kind === 'slide' ? 'Slides open to' : 'Hinges'} hint="Seen from outside">
+            <Toggle<HingeSide>
+              label={fam.kind === 'slide' ? 'Slide direction' : 'Hinge side'}
+              value={door.hinge}
+              onChange={(v) => patch({ hinge: v })}
+              options={[
+                { value: 'left', label: 'Left' },
+                { value: 'right', label: 'Right' },
+              ]}
+            />
+            {swingOrTraffic && (
+              <div className="field">
+                <span className="field-label">Opens</span>
+                <Toggle<Swing>
+                  label="Swing direction"
+                  value={door.swing}
+                  onChange={(v) => patch({ swing: v })}
+                  options={[
+                    { value: 'out', label: 'Outward' },
+                    { value: 'in', label: 'Inward' },
+                  ]}
+                />
+              </div>
+            )}
+          </Section>
+        )}
+
+        {fam.kind === 'traffic' && (
+          <Section title="Finish">
+            <Toggle<TrafficFinish> label="Finish" value={door.finish} onChange={(v) => patch({ finish: v })} options={TRAFFIC_FINISHES.map((t) => ({ value: t.id, label: t.label }))} />
+          </Section>
+        )}
+
+        {(fam.kind === 'swing' || fam.kind === 'slide') && (
+          <Section title="Hardware">
+            {fam.kind === 'swing' && <Switch label={`Door closer (${DOOR_CLOSER_SKU})`} checked={door.closer} onChange={(v) => patch({ closer: v })} />}
+            {door.family === 'man' && (
+              <Switch
+                label="Viewport window"
+                checked={door.window}
+                onChange={(v) => patch(v ? { window: true, series: '13478' } : { window: false })}
+              />
+            )}
+            {door.family === 'man' && door.window && <p className="panel-note">Window doors are only made in the 13478 series.</p>}
+            <label className="field">
+              <span className="field-label">Handle</span>
+              <select className="custom-select" value={door.handle} onChange={(e) => patch({ handle: e.target.value as HandleId })}>
+                {HANDLES.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </Section>
+        )}
+      </>
+    );
+  }

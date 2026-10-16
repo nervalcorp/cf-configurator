@@ -4,11 +4,8 @@
  * All geometry is in mm; the caller scales the root group to metres.
  */
 import * as THREE from 'three';
-import type { BoxPart, ComponentTree, Dimension, Face, Part, ProfilePart, SlabPart } from '@wic/core';
+import type { BoxPart, ComponentTree, Dimension, Part, SlabPart, WallPart } from '@wic/core';
 import type { Materials } from './materials';
-
-/** BoxGeometry material slots: [+x, -x, +y, -y, +z, -z]. */
-const FACE_SLOT: Record<Face, number> = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
 
 export interface Built {
   root: THREE.Group;
@@ -27,11 +24,12 @@ export function buildMeshes(tree: ComponentTree, mats: Materials): Built {
     if (!mesh) continue;
     mesh.castShadow = part.kind !== 'roof';
     mesh.receiveShadow = true;
-    mesh.userData = { partId: part.id, label: part.label };
+    mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined };
     root.add(mesh);
-    if (part.kind !== 'hinge' && part.kind !== 'hinge-pin' && part.kind !== 'threshold') {
+    if (OUTLINED.has(part.kind)) {
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 15), mats.edge);
       edges.position.copy(mesh.position);
+      edges.rotation.copy(mesh.rotation);
       root.add(edges);
     }
     if (part.label && part.kind !== 'floor' && part.kind !== 'roof') pickable.push(mesh);
@@ -42,23 +40,34 @@ export function buildMeshes(tree: ComponentTree, mats: Materials): Built {
   return { root, dims, pickable };
 }
 
+const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide']);
+
 function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
   switch (part.kind) {
     case 'post':
       return boxMesh(part, mats.interior);
-    case 'panel': {
-      const slots: THREE.Material[] = Array(6).fill(mats.interior);
-      if (part.exteriorFace) slots[FACE_SLOT[part.exteriorFace]] = mats.exterior;
-      return boxMesh(part, slots);
-    }
+    case 'wall':
+      return wallMesh(part, mats);
     case 'door-leaf':
-      return boxMesh(part, mats.doorLeaf);
+      return boxMesh(part, part.color ? tinted(mats.doorLeaf, part.color) : mats.doorLeaf);
     case 'door-frame':
       return boxMesh(part, mats.frame);
     case 'threshold':
       return boxMesh(part, mats.threshold);
     case 'hinge':
+    case 'closer':
       return boxMesh(part, mats.chrome);
+    case 'handle':
+      return boxMesh(part, part.color ? tinted(mats.chrome, part.color) : mats.chrome);
+    case 'window':
+      return boxMesh(part, mats.glass);
+    case 'track':
+    case 'guide':
+      return boxMesh(part, mats.track);
+    case 'housing':
+      return boxMesh(part, mats.exterior);
+    case 'curtain':
+      return boxMesh(part, mats.curtain);
     case 'hinge-pin': {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.height, 12), mats.chrome);
       m.position.set(...part.center);
@@ -67,14 +76,20 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
     case 'floor':
     case 'roof':
       return slabMesh(part, part.kind === 'floor' ? mats.floor : mats.roof);
-    case 'door-wall':
-      return profileMesh(part, mats);
   }
+}
+
+/** A one-off copy of a shared material in another colour; disposed with the model. */
+function tinted(base: THREE.MeshStandardMaterial, color: string) {
+  const m = base.clone();
+  m.color.set(color);
+  return m;
 }
 
 function boxMesh(p: BoxPart, mat: THREE.Material | THREE.Material[]) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(...p.size), mat);
   m.position.set(...p.center);
+  if (p.rotationY) m.rotation.y = p.rotationY;
   return m;
 }
 
@@ -89,11 +104,11 @@ function slabMesh(p: SlabPart, mat: THREE.Material) {
 }
 
 /**
- * Door-wall L-profile extruded along +Z. ExtrudeGeometry puts both caps in
- * group 0 (back cap first, then front); split it so only the outside cap gets
- * the exterior finish. The original build painted both caps.
+ * Wall profile extruded along local +Z (inside face at z = 0, outside at z = T).
+ * ExtrudeGeometry puts both caps in group 0 (z = 0 cap first, then z = T);
+ * split it so only the outside cap gets the exterior finish.
  */
-function profileMesh(p: ProfilePart, mats: Materials) {
+function wallMesh(p: WallPart, mats: Materials) {
   const shape = new THREE.Shape(p.profile.map(([x, y]) => new THREE.Vector2(x, y)));
   const geo = new THREE.ExtrudeGeometry(shape, { depth: p.thickness, bevelEnabled: false });
   const caps = geo.groups.find((g) => g.materialIndex === 0);
@@ -101,14 +116,13 @@ function profileMesh(p: ProfilePart, mats: Materials) {
   if (caps && sides) {
     const half = caps.count / 2;
     geo.clearGroups();
-    geo.addGroup(caps.start, half, 0); // z = 0 (back, −Z)
-    geo.addGroup(caps.start + half, half, 1); // z = depth (front, +Z)
-    geo.addGroup(sides.start, sides.count, 2);
+    geo.addGroup(caps.start, half, 0);
+    geo.addGroup(caps.start + half, half, 1);
+    geo.addGroup(sides.start, sides.count, 0);
   }
-  const back = p.exteriorFace === '-z' ? mats.exterior : mats.interior;
-  const front = p.exteriorFace === '+z' ? mats.exterior : mats.interior;
-  const m = new THREE.Mesh(geo, [back, front, mats.interior]);
+  const m = new THREE.Mesh(geo, [mats.interior, mats.exterior]);
   m.position.set(...p.origin);
+  m.rotation.y = p.rotationY;
   return m;
 }
 

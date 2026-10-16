@@ -35,6 +35,8 @@ interface UI {
   lightOrbit: boolean;
   /** Compartment the panel is editing. One for now; docking adds more. */
   active: string;
+  /** Door being edited on the Doors tab. */
+  selectedDoor: string | null;
 }
 
 interface State {
@@ -79,6 +81,7 @@ export const useStore = create<State>((set, get) => {
       autoRotate: false,
       lightOrbit: false,
       active: initial.compartments[0].id,
+      selectedDoor: initial.compartments[0].doors[0]?.id ?? null,
     },
 
     editCompartment: (fn, opts) => {
@@ -118,7 +121,7 @@ export const useStore = create<State>((set, get) => {
         checkpoint: cfg,
         past: [...s.past, s.config].slice(-HISTORY),
         future: [],
-        ui: { ...s.ui, active: cfg.compartments[0].id },
+        ui: { ...s.ui, active: cfg.compartments[0].id, selectedDoor: cfg.compartments[0].doors[0]?.id ?? null },
       }));
     },
 

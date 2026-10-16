@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIMITS, defaultCompartment, defaultConfiguration, dragHandle, footprint, inToMm, migrate, mmToIn, normalizeCompartment, pickHandle, validateCompartment } from '../src';
+import { LIMITS, setShape, defaultCompartment, defaultConfiguration, dragHandle, footprint, inToMm, migrate, mmToIn, normalize, normalizeCompartment, pickHandle, validateCompartment } from '../src';
 
 describe('normalize', () => {
   it('gives a freezer a floor', () => {
@@ -25,12 +25,8 @@ describe('validate', () => {
   });
   it('flags a door that runs past the wall and sends the user to Doors', () => {
     const c = defaultCompartment();
-    const issues = validateCompartment({ ...c, boxW: inToMm(72), door: { ...c.door, offset: inToMm(40) } });
-    expect(issues.map((i) => i.tab)).toEqual(['doors']);
-  });
-  it('flags a door wall under 72"', () => {
-    const issues = validateCompartment({ ...defaultCompartment(), shape: 'cutout-a', boxW: inToMm(84), notchW: 0.5 });
-    expect(issues.some((i) => i.tab === 'layout')).toBe(true);
+    const issues = validateCompartment({ ...c, boxW: inToMm(72), doors: [{ ...c.doors[0], offset: inToMm(40) }] });
+    expect(issues.map((i) => [i.tab, i.ref])).toEqual([['doors', 'd1']]);
   });
 });
 
@@ -54,17 +50,19 @@ describe('drag', () => {
   });
 
   it('grows a back-side (br) notch when its corner moves toward the front', () => {
-    const c = { ...defaultCompartment(), shape: 'cutout-d' as const };
+    const c = setShape(defaultCompartment(), 'cutout-d', 0.2, 0.2);
     const next = dragHandle(c, { type: 'notchD', notch: 'br' }, [0, inToMm(60)]);
     expect(next.notchD).toBeCloseTo(60 / 150, 6);
   });
 
-  it('refuses a notch that would shrink the door wall under 72"', () => {
-    const c = { ...defaultCompartment(), shape: 'cutout-a' as const, boxW: inToMm(120), notchW: 0.2 };
-    const next = dragHandle(c, { type: 'notchW', notch: 'tr' }, [inToMm(72), 0]);
-    expect(next.notchW).toBeCloseTo(0.4, 6); // 48" notch leaves exactly 72"
-    const tooFar = dragHandle(next, { type: 'notchW', notch: 'tr' }, [inToMm(66), 0]);
-    expect(tooFar.notchW).toBeCloseTo(0.4, 6);
+  it('refuses a notch that would leave the door no room', () => {
+    // Cut-out A front wall = box width minus notch; a 34" door needs 38" + 8" of posts = 46" outside.
+    const c = setShape({ ...defaultCompartment(), boxW: inToMm(96) }, 'cutout-a', 0.2, 0.2);
+    const next = dragHandle(c, { type: 'notchW', notch: 'tr' }, [inToMm(48), 0]);
+    expect(next.notchW).toBeCloseTo(0.5, 6); // 48" left: fits
+    const pallet = { ...next, doors: [{ ...next.doors[0], family: 'pallet' as const }] };
+    const tooFar = dragHandle({ ...pallet, notchW: 0.3 }, { type: 'notchW', notch: 'tr' }, [inToMm(48), 0]);
+    expect(tooFar.notchW).toBeCloseTo(0.3, 6); // 48" pallet door needs 60" of wall
   });
 });
 
@@ -72,6 +70,14 @@ describe('migrate', () => {
   it('reads back what it saved', () => {
     const cfg = defaultConfiguration();
     expect(migrate(JSON.parse(JSON.stringify(cfg)))).toEqual(cfg);
+  });
+  it('upgrades a v1 file with a single front door', () => {
+    const v1 = { schema: 1, site: { type: 'indoor' }, compartments: [{ ...defaultCompartment(), doors: undefined, door: { width: 863.6, offset: 400, hinge: 'left' } }] };
+    const cfg = normalize(migrate(v1));
+    const d = cfg.compartments[0].doors[0];
+    expect(cfg.schema).toBe(2);
+    expect([d.wall, d.hinge, d.family]).toEqual([2, 'left', 'man']);
+    expect(d.offset).toBeCloseTo(400, 6);
   });
   it('rejects unknown files', () => {
     expect(() => migrate({ schema: 99 })).toThrow(/schema/);
