@@ -20,6 +20,9 @@ export function Viewer() {
     );
     ctrl.current = c;
     viewerApi.current = { resetView: () => c.resetView(), screenshot: () => c.screenshot() };
+    if (new URLSearchParams(location.search).has('debug')) {
+      (window as unknown as { __wic: unknown }).__wic = { viewer: c, store: useStore };
+    }
     return () => {
       viewerApi.current = null;
       ctrl.current = null;

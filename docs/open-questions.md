@@ -1,17 +1,20 @@
 # Open questions
 
-## Doors (Sprint A)
+## Doors
 
-- **13478 vs 3478.** Both are 34" × 78" man doors in the catalog; only 13478 has window (W) models. What else differs? The configurator treats them as the same size.
-- **L/R in model numbers.** Assumed to be the hinge side (or slide direction) seen from outside. Confirm against the door catalog.
-- **Roll-up door height.** ICC-DR-96120 needs a 120" opening, more than the tallest compartment (10' overall). It is offered but always fails validation. Is there a taller box, or should it be hidden?
+- **Self closer vs ICC-20SS.** The man and pallet door pages list a self closer as standard, and the 3D doors show it. ICC-20SS is still offered as an add-on hydraulic closer. Keep it, or remove the toggle?
+- **Roll-up width.** ICC-DR-96120 is custom made; the configurator shows it 96" wide. Should width be a setting?
 - **Not in the ICC catalog.** Jamb guards, kickplates, pressure-relief vents and strip curtains have no model yet, so they are not offered.
 - **Hinge kits.** ICC-1238SL/SR hinges are not added to the part list; assumed included with the door.
 
 ## Resolved
 
-- **Door on Cut-out E** (2026-10-16). With doors on any wall, a door only has to fit its own wall. The default door now sits in the notch's 60" front wall with no error, and can be moved to any other wall.
-- **Panel lettering** (2026-10-16). One letter per wall, A at the front, counter-clockwise on the plan (B is to the right of A seen from outside).
+- **13478 vs 3478** (2026-10-19). 13478 is full-buried (flush in a frame), 3478 is semi-buried (stands proud of the wall). Window models are full-buried only. 3D models follow the ICC door pages.
+- **L/R in model numbers** (2026-10-19). Swing side seen from outside: an L door has its hinges on the left.
+- **Roll-up height** (2026-10-19). Coolers only, 120" panels only, opening the full panel height, drum housing above the walls and not counted.
+- **Height meaning** (2026-10-19). The Height setting is the wall panel height.
+- **Door on Cut-out E** (2026-10-16). A door only has to fit its own wall.
+- **Panel lettering** (2026-10-16). One letter per wall, A at the front, counter-clockwise on the plan.
 
 ## Later
 

@@ -7,6 +7,7 @@ import {
   inToMm,
   updateDoor,
   wallProfile,
+  wallProfiles,
   type BoxPart,
   type Compartment,
   type WallPart,
@@ -20,7 +21,7 @@ describe('buildCompartment', () => {
     const kinds = (k: string) => t.parts.filter((p) => p.kind === k).length;
     expect(kinds('post')).toBe(4);
     expect(kinds('wall')).toBe(4);
-    expect(kinds('door-leaf')).toBe(1);
+    expect(t.parts.filter((p) => p.id.endsWith(':leaf'))).toHaveLength(1);
     expect(kinds('floor')).toBe(1);
     expect(kinds('roof')).toBe(0);
     expect(t.walls.map((w) => w.letter)).toEqual(['A', 'B', 'C', 'D']);
@@ -46,9 +47,10 @@ describe('buildCompartment', () => {
   it('cuts the door opening (plus frame) out of the wall it sits in', () => {
     const t = buildCompartment(comp(), 'indoor');
     const a = t.parts.find((p): p is WallPart => p.kind === 'wall' && p.letter === 'A')!;
-    expect(a.profile.length).toBe(8); // rectangle + one notch
+    expect(a.profiles).toHaveLength(1);
+    expect(a.profiles[0].length).toBe(8); // rectangle + one notch
     const b = t.parts.find((p): p is WallPart => p.kind === 'wall' && p.letter === 'B')!;
-    expect(b.profile.length).toBe(4);
+    expect(b.profiles[0].length).toBe(4);
   });
 
   it('turns parts on a side wall to face outward', () => {
@@ -70,6 +72,47 @@ describe('buildCompartment', () => {
     const leaf = right.parts.find((p) => p.kind === 'door-leaf') as BoxPart;
     expect(hx(right)).toBeGreaterThan(leaf.center[0]);
     expect(hx(left)).toBeLessThan(leaf.center[0]);
+  });
+
+  it('builds walls at the full panel height', () => {
+    const t = buildCompartment(comp({ height: inToMm(120) }), 'indoor');
+    expect(t.wallHeight).toBeCloseTo(inToMm(120), 6);
+    expect(t.overall.height).toBeGreaterThan(inToMm(124));
+  });
+
+  it('stands a semi-buried leaf proud of the wall and sets a full-buried one flush in a frame', () => {
+    const c = comp();
+    const leafOf = (cc: Compartment) =>
+      buildCompartment(cc, 'indoor').parts.find((p): p is BoxPart => p.kind === 'door-leaf' && p.id.endsWith(':leaf'))!;
+    const semi = leafOf(c);
+    const full = leafOf(updateDoor(c, 'd1', { series: '13478' }));
+    const T = c.wallThickness;
+    const frontZ = (b: BoxPart) => b.center[2] + b.size[2] / 2; // front wall faces +Z
+    const wallFace = inToMm(75) - 0; // footprint centred: front face at +depth/2
+    expect(frontZ(semi) - wallFace).toBeGreaterThan(inToMm(2));
+    expect(Math.abs(frontZ(full) - wallFace)).toBeLessThan(10);
+    expect(semi.size[0]).toBeGreaterThan(inToMm(34)); // overlaps the opening
+    expect(full.size[0]).toBeLessThan(inToMm(34));
+    const fullTree = buildCompartment(updateDoor(c, 'd1', { series: '13478' }), 'indoor');
+    expect(fullTree.parts.some((p) => p.kind === 'door-frame')).toBe(true);
+    expect(buildCompartment(c, 'indoor').parts.some((p) => p.kind === 'door-frame')).toBe(false);
+    expect(T).toBeGreaterThan(0);
+  });
+
+  it('gives swing doors three cam-lift hinges and a self closer', () => {
+    const t = buildCompartment(comp(), 'indoor');
+    expect(t.parts.filter((p) => p.kind === 'hinge-pin')).toHaveLength(3);
+    expect(t.parts.some((p) => p.id.endsWith('self-closer'))).toBe(true);
+  });
+
+  it('splits the wall around a full-height roll-up opening', () => {
+    let c = comp({ height: inToMm(120), boxW: inToMm(180) });
+    c = updateDoor(c, 'd1', { family: 'rollup', offset: inToMm(30) });
+    const t = buildCompartment(c, 'indoor');
+    const a = t.parts.find((p): p is WallPart => p.kind === 'wall' && p.letter === 'A')!;
+    expect(a.profiles).toHaveLength(2);
+    const housing = t.parts.find((p): p is BoxPart => p.kind === 'housing')!;
+    expect(housing.center[1] - housing.size[1] / 2).toBeGreaterThan(inToMm(120)); // above the panels
   });
 
   it('adds closer and window parts only when chosen', () => {
@@ -99,5 +142,10 @@ describe('wallProfile', () => {
   it('handles an opening that touches the wall end', () => {
     const p = wallProfile(1000, 2000, [[0, 400, 1500]]);
     expect(p[0]).toEqual([0, 1500]);
+  });
+  it('splits the wall at a full-height opening', () => {
+    const p = wallProfiles(3000, 2000, [[1000, 2000, 2000], [200, 600, 1500]]);
+    expect(p).toHaveLength(2);
+    expect(p[1]).toEqual([[2000, 0], [3000, 0], [3000, 2000], [2000, 2000]]);
   });
 });

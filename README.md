@@ -47,6 +47,7 @@ apps/web          React + Zustand + Three.js app
 - **The rules engine owns constraints.** The UI may hide options, but `normalize()` is what guarantees a freezer has a floor or a notch stays in range.
 - **Edits are committed or transient.** Drags and slider moves update live as transient edits and commit once on release, so each gesture is one undo step.
 - **Configurations are versioned.** Bump `SCHEMA_VERSION` on breaking changes and teach `migrate()` to read the old shape. v1 → v2 turned the single front `door` into a `doors` list.
+- **Height means wall panel height.** The ceiling panel sits on top, so the overall height is floor + panels + ceiling.
 - **Walls are lettered A, B, C… counter-clockwise on the plan, starting with A at the front wall.** Joint 1 is the left end of wall A.
 - **Anything placed on a wall goes through `wallFrames()`**: an origin at the inside face of the wall's left end (seen from outside), a `u` axis along the wall and an outward normal `n`. Doors use it now; glass doors, shelving and lights will too.
 - **Model numbers live in `catalog.ts`.** They come from the ICC spec-widget catalog and are provisional until the line-up audit closes. Lines marked `CONFIRM` are assumptions.
@@ -57,14 +58,17 @@ A compartment holds any number of doors, each on any wall. Each door records its
 
 | Type | Models | Options |
 | --- | --- | --- |
-| Man door 34" × 78" | ICC-DR-3478 / 13478 C·F L·R, 13478…W | hinge, swing in/out, closer, window (13478 only), handle |
-| Pallet door 48" × 78" | ICC-DR-4878 C·F L·R | hinge, swing, closer, handle |
+| Man door 34" × 78", semi-buried | ICC-DR-3478 C·F L·R | swing side, in/out, closer add-on, handle |
+| Man door 34" × 78", full-buried | ICC-DR-13478 C·F L·R, with window …W | swing side, in/out, window, closer add-on, handle |
+| Pallet door 48" × 78", semi-buried | ICC-DR-4878 C·F L·R | swing side, in/out, closer add-on, handle |
 | Pallet sliding 54" × 96" | ICC-DR-5496 L·R | slide direction, handle |
 | Forklift sliding 72" × 96" | ICC-DR-7296 L·R | slide direction, handle |
-| Forklift roll-up 96" × 120" | ICC-DR-96120 | none |
+| Forklift roll-up, custom (96" wide shown) | ICC-DR-96120 | none; coolers with 120" panels only |
 | Traffic, single / double | ICC-DR-3684DS / 7284DS -GR·WH·BK | finish |
 
-Hardware add-ons: closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
+Semi-buried doors stand proud of the wall and overlap the opening; full-buried doors sit flush in their own frame. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
+
+The roll-up opening runs the full 120" panel height; its drum housing sits above the walls and is not counted against the panel height. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
 
 ## Brand skins
 

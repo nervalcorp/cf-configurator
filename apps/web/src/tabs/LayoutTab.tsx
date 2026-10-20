@@ -83,7 +83,7 @@ export function LayoutTab() {
           onCommit={commit}
         />
         <Slider
-          label="Height"
+          label="Wall panel height"
           value={mmToIn(c.height)}
           min={mmToIn(hgt.min)}
           max={mmToIn(hgt.max)}

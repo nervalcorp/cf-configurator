@@ -83,8 +83,16 @@ describe('door rules', () => {
 
   it('flags a door taller than the walls allow', () => {
     const c = updateDoor(defaultCompartment(), 'd1', { family: 'slide-pallet', offset: inToMm(10) });
-    const issues = validateCompartment({ ...c, height: inToMm(100) });
-    expect(issues.some((i) => /high/.test(i.message))).toBe(true);
+    expect(validateCompartment({ ...c, height: inToMm(100) }).some((i) => /high/.test(i.message))).toBe(true);
+    expect(validateCompartment({ ...c, height: inToMm(104) }).filter((i) => /high/.test(i.message))).toEqual([]);
+  });
+
+  it('allows the roll-up only in a cooler with 120" panels', () => {
+    const base = { ...defaultCompartment(), boxW: inToMm(180) };
+    const c = updateDoor(base, 'd1', { family: 'rollup', offset: inToMm(30) });
+    expect(validateCompartment({ ...c, height: inToMm(120) })).toEqual([]);
+    expect(validateCompartment({ ...c, height: inToMm(118) }).some((i) => /120|10' 0"/.test(i.message))).toBe(true);
+    expect(validateCompartment({ ...c, height: inToMm(120), temperature: 'freezer' }).some((i) => /coolers only/.test(i.message))).toBe(true);
   });
 
   it('warns when there is no door', () => {

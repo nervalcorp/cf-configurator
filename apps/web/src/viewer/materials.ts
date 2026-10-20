@@ -25,9 +25,10 @@ export class Materials {
   doorLeaf = new THREE.MeshStandardMaterial({ color: 0xf0f0ee, roughness: 0.35, metalness: 0.05 });
   frame = new THREE.MeshStandardMaterial({ color: 0xe8e8e6, roughness: 0.4, metalness: 0.08 });
   threshold = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
-  chrome = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.2, metalness: 0.75 });
-  glass = new THREE.MeshStandardMaterial({ color: 0x9fb8c8, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.45 });
-  track = new THREE.MeshStandardMaterial({ color: 0x6b7178, roughness: 0.45, metalness: 0.6 });
+  // No environment map, so metals stay low-metalness and light to read as polished chrome.
+  chrome = new THREE.MeshStandardMaterial({ color: 0xc4cad0, roughness: 0.25, metalness: 0.5 });
+  glass = new THREE.MeshStandardMaterial({ color: 0xdfe8ee, roughness: 0.05, metalness: 0.05, transparent: true, opacity: 0.55 });
+  track = new THREE.MeshStandardMaterial({ color: 0xbfc4c9, roughness: 0.3, metalness: 0.4 });
   curtain = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.55, metalness: 0.35 });
   highlight = new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.4, emissive: 0x0d9488, emissiveIntensity: 0.35 });
   edge = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.22 });

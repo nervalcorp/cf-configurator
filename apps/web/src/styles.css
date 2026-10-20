@@ -104,7 +104,7 @@ canvas { display: block; }
 }
 .section-hint { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 11px; }
 .panel-note { font-size: 12.5px; line-height: 1.55; color: var(--text-mid); margin-top: 12px; }
-.panel-section > .panel-note:first-child { margin-top: 0; }
+.panel-section > .panel-note:first-child, .panel-note.first { margin-top: 0; margin-bottom: 12px; }
 .panel-error { font-size: 12.5px; color: var(--danger); margin-top: 10px; }
 
 /* toggles */

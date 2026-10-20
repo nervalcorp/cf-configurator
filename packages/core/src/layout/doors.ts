@@ -61,9 +61,11 @@ export function findFreeOffset(c: Compartment, door: Door, wall: number, near?: 
     const s = doorSpan(door, off);
     return others.every((o) => !overlaps(s, o));
   };
+  // Whole-inch positions only, so offsets read cleanly in the panel.
   const step = 25.4;
   const candidates: number[] = [];
-  for (let off = lo; off <= hi + 0.01; off += step) candidates.push(Math.min(off, hi));
+  for (let off = Math.ceil(lo / step - 1e-9) * step; off <= hi + 0.01; off += step) candidates.push(Math.min(off, hi));
+  if (!candidates.length) candidates.push(lo);
   if (near !== undefined) candidates.sort((a, b) => Math.abs(a - near) - Math.abs(b - near));
   return candidates.find(free) ?? null;
 }

@@ -8,8 +8,6 @@ import {
   HANDLES,
   type HandleId,
   type HingeSide,
-  MAN_SERIES,
-  type ManSeries,
   type Swing,
   TRAFFIC_FINISHES,
   type TrafficFinish,
@@ -28,6 +26,13 @@ import {
 import { FloorPlan } from '../floorplan/FloorPlan';
 import { useActiveCompartment, useStore } from '../store';
 import { Section, Slider, Switch, Toggle } from '../shell/controls';
+
+type ManType = 'semi' | 'full' | 'full-window';
+const MAN_TYPES: Record<ManType, Partial<Door>> = {
+  semi: { series: '3478', window: false },
+  full: { series: '13478', window: false },
+  'full-window': { series: '13478', window: true },
+};
 
 export function DoorsTab() {
   const c = useActiveCompartment();
@@ -138,8 +143,34 @@ function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; ind
           </label>
           {door.family === 'man' && (
             <div className="field">
-              <span className="field-label">Series</span>
-              <Toggle<ManSeries> label="Series" value={door.series} onChange={(v) => patch({ series: v })} options={MAN_SERIES.map((s) => ({ value: s.id, label: s.label }))} />
+              <span className="field-label">Door type</span>
+              <Toggle<ManType>
+                label="Door type"
+                value={door.series === '13478' ? (door.window ? 'full-window' : 'full') : 'semi'}
+                onChange={(v) => patch(MAN_TYPES[v])}
+                options={[
+                  { value: 'semi', label: 'Semi-buried' },
+                  { value: 'full', label: 'Full-buried' },
+                  { value: 'full-window', label: 'With window' },
+                ]}
+              />
+              <p className="panel-note">
+                {door.series === '13478'
+                  ? `Full-buried: the door sits flush with the wall in its own frame.${door.window ? ' Heated 12" × 16" window.' : ''}`
+                  : 'Semi-buried: the door and part of its body stand out from the wall.'}
+              </p>
+            </div>
+          )}
+          {door.family === 'rollup' && (c.temperature !== 'cooler' || Math.abs(c.height - inToMm(120)) > 0.5) && (
+            <div className="field">
+              <p className="panel-error">The roll-up door is made for coolers with 10' 0" (120") wall panels.</p>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => edit((x) => ({ ...x, height: inToMm(120), temperature: 'cooler' }))}
+              >
+                Set this compartment to a 10' cooler
+              </button>
             </div>
           )}
         </Section>
@@ -183,7 +214,7 @@ function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; ind
         </Section>
 
         {fam.kind !== 'rollup' && fam.kind !== 'traffic' && (
-          <Section title={fam.kind === 'slide' ? 'Slides open to' : 'Hinges'} hint="Seen from outside">
+          <Section title={fam.kind === 'slide' ? 'Slides open to' : 'Door swing'} hint={fam.kind === 'slide' ? 'Seen from outside' : 'Hinge side, seen from outside'}>
             <Toggle<HingeSide>
               label={fam.kind === 'slide' ? 'Slide direction' : 'Hinge side'}
               value={door.hinge}
@@ -218,15 +249,12 @@ function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; ind
 
         {(fam.kind === 'swing' || fam.kind === 'slide') && (
           <Section title="Hardware">
-            {fam.kind === 'swing' && <Switch label={`Door closer (${DOOR_CLOSER_SKU})`} checked={door.closer} onChange={(v) => patch({ closer: v })} />}
-            {door.family === 'man' && (
-              <Switch
-                label="Viewport window"
-                checked={door.window}
-                onChange={(v) => patch(v ? { window: true, series: '13478' } : { window: false })}
-              />
+            {fam.kind === 'swing' && (
+              <>
+                <p className="panel-note first">Cam-lift hinges and a self closer come with the door.</p>
+                <Switch label={`Add a hydraulic closer (${DOOR_CLOSER_SKU})`} checked={door.closer} onChange={(v) => patch({ closer: v })} />
+              </>
             )}
-            {door.family === 'man' && door.window && <p className="panel-note">Window doors are only made in the 13478 series.</p>}
             <label className="field">
               <span className="field-label">Handle</span>
               <select className="custom-select" value={door.handle} onChange={(e) => patch({ handle: e.target.value as HandleId })}>

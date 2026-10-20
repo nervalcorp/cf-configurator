@@ -14,6 +14,12 @@ import { inToMm } from './units';
 export const CATALOG_SOURCE = 'ICC spec-widget catalog (models under audit)';
 
 export type DoorKind = 'swing' | 'slide' | 'rollup' | 'traffic';
+/**
+ * How a swing door sits in the wall.
+ * semi-buried: the leaf and part of its body stand proud of the wall, overlapping the opening.
+ * full-buried: the leaf sits in a frame, flush or nearly flush with the outside wall face.
+ */
+export type DoorMount = 'semi-buried' | 'full-buried';
 export type DoorFamilyId =
   | 'man'
   | 'pallet'
@@ -41,17 +47,29 @@ export interface DoorFamily {
   temps: Temperature[];
   /** Whether the hinge (or slide direction) is part of the model number. */
   handed: boolean;
+  /** Needs wall panels of exactly this height (roll-up). */
+  panelHeight?: number;
 }
 
 const BOTH: Temperature[] = ['cooler', 'freezer'];
 const FRAME = inToMm(2);
 
+/**
+ * Space beside and above a swing door: the overlap of a semi-buried leaf or the
+ * frame of a full-buried one, plus hinge knuckles on one side and the latch
+ * strike on the other, and the self closer above.
+ */
+const SWING_SIDE = inToMm(4.5);
+const SWING_HEAD = inToMm(5);
+
 export const DOOR_FAMILIES: readonly DoorFamily[] = [
-  { id: 'man', label: 'Man door 34" × 78"', kind: 'swing', width: inToMm(34), height: inToMm(78), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: true },
-  { id: 'pallet', label: 'Pallet door 48" × 78"', kind: 'swing', width: inToMm(48), height: inToMm(78), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: true },
+  { id: 'man', label: 'Man door 34" × 78"', kind: 'swing', width: inToMm(34), height: inToMm(78), headroom: SWING_HEAD, side: SWING_SIDE, temps: BOTH, handed: true },
+  { id: 'pallet', label: 'Pallet door 48" × 78" (semi-buried)', kind: 'swing', width: inToMm(48), height: inToMm(78), headroom: SWING_HEAD, side: SWING_SIDE, temps: BOTH, handed: true },
   { id: 'slide-pallet', label: 'Pallet sliding door 54" × 96"', kind: 'slide', width: inToMm(54), height: inToMm(96), headroom: inToMm(8), side: inToMm(4), temps: BOTH, handed: true },
   { id: 'slide-forklift', label: 'Forklift sliding door 72" × 96"', kind: 'slide', width: inToMm(72), height: inToMm(96), headroom: inToMm(8), side: inToMm(4), temps: BOTH, handed: true },
-  { id: 'rollup', label: 'Forklift roll-up door 96" × 120"', kind: 'rollup', width: inToMm(96), height: inToMm(120), headroom: inToMm(16), side: inToMm(4), temps: BOTH, handed: false },
+  // Custom made; 96" wide shown. The opening runs the full 120" panel height and the
+  // coil housing sits above the walls, so it takes no headroom.
+  { id: 'rollup', label: 'Forklift roll-up door, 120" panels, coolers only', kind: 'rollup', width: inToMm(96), height: inToMm(120), headroom: 0, side: inToMm(4.5), temps: ['cooler'], handed: false, panelHeight: inToMm(120) },
   { id: 'traffic-single', label: 'Traffic door, single 36" × 84"', kind: 'traffic', width: inToMm(36), height: inToMm(84), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: false },
   { id: 'traffic-double', label: 'Traffic door, double 72" × 84"', kind: 'traffic', width: inToMm(72), height: inToMm(84), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: false },
 ];
@@ -63,11 +81,21 @@ export function getDoorFamily(id: DoorFamilyId): DoorFamily {
   return f;
 }
 
-export const MAN_SERIES: { id: ManSeries; label: string }[] = [
-  { id: '3478', label: 'ICC-DR-3478' },
-  // CONFIRM: how the 13478 series differs from 3478. Only 13478 has window (W) models.
-  { id: '13478', label: 'ICC-DR-13478' },
+/** 3478 = semi-buried, 13478 = full-buried; only full-buried has window (W) models. */
+export const MAN_SERIES: { id: ManSeries; label: string; mount: DoorMount }[] = [
+  { id: '3478', label: 'Semi-buried', mount: 'semi-buried' },
+  { id: '13478', label: 'Full-buried', mount: 'full-buried' },
 ];
+
+/** Mount style of a swing door; null for doors that do not swing. */
+export function doorMount(d: { family: DoorFamilyId; series: ManSeries }): DoorMount | null {
+  if (d.family === 'man') return d.series === '13478' ? 'full-buried' : 'semi-buried';
+  if (d.family === 'pallet') return 'semi-buried';
+  return null;
+}
+
+/** Heated window in full-buried man doors (ICC-DR-13478…W). */
+export const DOOR_WINDOW = { width: inToMm(12), height: inToMm(16) };
 
 export const HANDLES: { id: HandleId; label: string }[] = [
   { id: 'included', label: 'Handle supplied with the door' },
@@ -83,9 +111,13 @@ export const TRAFFIC_FINISHES: { id: TrafficFinish; label: string; color: string
   { id: 'BK', label: 'Black', color: '#2a2c30' },
 ];
 
+/** Optional add-on. The man and pallet doors already list a self closer as standard. */
 export const DOOR_CLOSER_SKU = 'ICC-20SS';
 
-/** Model number for a door. L/R is the hinge (or slide) side seen from outside. CONFIRM. */
+/**
+ * Model number for a door. L/R is the swing side seen from outside: an L door
+ * has its hinges on the left (confirmed against the ICC door pages).
+ */
 export function doorSku(
   d: { family: DoorFamilyId; series: ManSeries; window: boolean; hinge: 'left' | 'right'; finish: TrafficFinish },
   temperature: Temperature,

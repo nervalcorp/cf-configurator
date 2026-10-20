@@ -48,6 +48,14 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
       return boxMesh(part, mats.interior);
     case 'wall':
       return wallMesh(part, mats);
+    case 'badge':
+      return boxMesh(part, tinted(mats.threshold, part.color ?? '#1f2a33'));
+    case 'gasket':
+      return boxMesh(part, mats.threshold);
+    case 'trim':
+      return boxMesh(part, part.color ? tinted(mats.frame, part.color) : mats.frame);
+    case 'latch':
+      return boxMesh(part, part.color ? tinted(mats.chrome, part.color) : mats.chrome);
     case 'door-leaf':
       return boxMesh(part, part.color ? tinted(mats.doorLeaf, part.color) : mats.doorLeaf);
     case 'door-frame':
@@ -63,11 +71,10 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
       return boxMesh(part, mats.glass);
     case 'track':
     case 'guide':
-      return boxMesh(part, mats.track);
     case 'housing':
-      return boxMesh(part, mats.exterior);
+      return boxMesh(part, part.color ? tinted(mats.track, part.color) : mats.track);
     case 'curtain':
-      return boxMesh(part, mats.curtain);
+      return boxMesh(part, part.color ? tinted(mats.curtain, part.color) : mats.curtain);
     case 'hinge-pin': {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.height, 12), mats.chrome);
       m.position.set(...part.center);
@@ -104,26 +111,55 @@ function slabMesh(p: SlabPart, mat: THREE.Material) {
 }
 
 /**
- * Wall profile extruded along local +Z (inside face at z = 0, outside at z = T).
- * ExtrudeGeometry puts both caps in group 0 (z = 0 cap first, then z = T);
- * split it so only the outside cap gets the exterior finish.
+ * Wall outlines extruded along local +Z (inside face at z = 0, outside at z = T).
+ * ExtrudeGeometry puts both caps of a shape in one group (z = 0 cap first, then
+ * z = T) and the sides in the next; split the caps so only the outside one
+ * gets the exterior finish. One geometry per outline keeps the groups simple.
  */
 function wallMesh(p: WallPart, mats: Materials) {
-  const shape = new THREE.Shape(p.profile.map(([x, y]) => new THREE.Vector2(x, y)));
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: p.thickness, bevelEnabled: false });
-  const caps = geo.groups.find((g) => g.materialIndex === 0);
-  const sides = geo.groups.find((g) => g.materialIndex === 1);
-  if (caps && sides) {
-    const half = caps.count / 2;
-    geo.clearGroups();
-    geo.addGroup(caps.start, half, 0);
-    geo.addGroup(caps.start + half, half, 1);
-    geo.addGroup(sides.start, sides.count, 0);
-  }
+  const geos = p.profiles.map((outline) => {
+    const shape = new THREE.Shape(outline.map(([x, y]) => new THREE.Vector2(x, y)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: p.thickness, bevelEnabled: false });
+    const caps = geo.groups.find((g) => g.materialIndex === 0);
+    const sides = geo.groups.find((g) => g.materialIndex === 1);
+    if (caps && sides) {
+      const half = caps.count / 2;
+      geo.clearGroups();
+      geo.addGroup(caps.start, half, 0);
+      geo.addGroup(caps.start + half, half, 1);
+      geo.addGroup(sides.start, sides.count, 0);
+    }
+    return geo;
+  });
+  const geo = geos.length === 1 ? geos[0] : mergeWithGroups(geos);
   const m = new THREE.Mesh(geo, [mats.interior, mats.exterior]);
   m.position.set(...p.origin);
   m.rotation.y = p.rotationY;
   return m;
+}
+
+/** Concatenate non-indexed geometries, keeping each one's material groups. */
+function mergeWithGroups(geos: THREE.BufferGeometry[]) {
+  const out = new THREE.BufferGeometry();
+  const names = ['position', 'normal', 'uv'] as const;
+  let offset = 0;
+  for (const name of names) {
+    const arrays = geos.map((g) => g.getAttribute(name).array as Float32Array);
+    const total = arrays.reduce((s, a) => s + a.length, 0);
+    const merged = new Float32Array(total);
+    let at = 0;
+    for (const a of arrays) {
+      merged.set(a, at);
+      at += a.length;
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(merged, geos[0].getAttribute(name).itemSize));
+  }
+  for (const g of geos) {
+    for (const grp of g.groups) out.addGroup(grp.start + offset, grp.count, grp.materialIndex);
+    offset += g.getAttribute('position').count;
+    g.dispose();
+  }
+  return out;
 }
 
 function addDimension(group: THREE.Group, d: Dimension, mats: Materials) {

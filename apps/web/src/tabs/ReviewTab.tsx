@@ -42,7 +42,9 @@ export function ReviewTab() {
   const rows: [string, string][] = [
     ['Type', `${config.site.type === 'indoor' ? 'Indoor' : 'Outdoor'} ${c.temperature}`],
     ['Shape', SHAPES.find((s) => s.id === c.shape)?.label ?? c.shape],
-    ['Outside size', `${formatFeetInches(c.boxW)} × ${formatFeetInches(c.boxD)} × ${formatFeetInches(c.height)} high`],
+    ['Outside size', `${formatFeetInches(c.boxW)} × ${formatFeetInches(c.boxD)}`],
+    ['Wall panels', `${formatFeetInches(c.height)} high, ${formatInches(c.wallThickness)} PIR`],
+    ['Overall height', `${formatFeetInches(tree.overall.height)} with floor and ceiling`],
     ['Exterior', FINISH_NAMES[c.finishes.exterior]],
     ['Floor', FLOOR_NAMES[c.finishes.floor]],
     ['Doors', c.doors.length ? `${c.doors.length}` : 'None'],

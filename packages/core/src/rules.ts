@@ -75,7 +75,7 @@ export function validateCompartment(c: Compartment): Issue[] {
   const id = c.id;
   const fp = footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
   const frames = wallFrames(fp, c.wallThickness);
-  const wallH = c.height - c.wallThickness;
+  const wallH = c.height;
   const err = (tab: TabId, message: string, ref?: string) =>
     issues.push({ compartmentId: id, tab, severity: 'error', message, ref });
 
@@ -88,10 +88,15 @@ export function validateCompartment(c: Compartment): Issue[] {
     const f = getDoorFamily(d.family);
     const wall = frames[d.wall];
     if (!wall) return err('doors', `${name} is not on a wall.`, d.id);
-    if (!f.temps.includes(c.temperature)) err('doors', `${name} is not made for a ${c.temperature}.`, d.id);
-    const need = f.height + f.headroom;
-    if (need > wallH + 0.01) {
-      err('doors', `${name} needs a compartment at least ${formatFeetInches(need + c.wallThickness)} high. Raise the height or pick a shorter door.`, d.id);
+    if (!f.temps.includes(c.temperature)) {
+      err('doors', `${name} is for ${f.temps.join(' and ')}s only; this compartment is a ${c.temperature}.`, d.id);
+    }
+    if (f.panelHeight !== undefined) {
+      if (Math.abs(wallH - f.panelHeight) > 0.5) {
+        err('doors', `${name} needs ${formatFeetInches(f.panelHeight)} wall panels; these are ${formatFeetInches(wallH)}. Set the panel height to ${formatFeetInches(f.panelHeight)} on the Layout step.`, d.id);
+      }
+    } else if (f.height + f.headroom > wallH + 0.01) {
+      err('doors', `${name} needs wall panels at least ${formatFeetInches(f.height + f.headroom)} high. Raise the panel height or pick a shorter door.`, d.id);
     }
     const [lo, hi] = offsetRange(d, wall.length);
     if (hi < lo) {

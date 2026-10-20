@@ -56,13 +56,14 @@ describe('drag', () => {
   });
 
   it('refuses a notch that would leave the door no room', () => {
-    // Cut-out A front wall = box width minus notch; a 34" door needs 38" + 8" of posts = 46" outside.
+    // Cut-out A front wall = box width minus notch. A 34" man door needs 43" inside
+    // (opening + 4.5" each side), plus 8" of corner posts = 51" outside.
     const c = setShape({ ...defaultCompartment(), boxW: inToMm(96) }, 'cutout-a', 0.2, 0.2);
-    const next = dragHandle(c, { type: 'notchW', notch: 'tr' }, [inToMm(48), 0]);
-    expect(next.notchW).toBeCloseTo(0.5, 6); // 48" left: fits
-    const pallet = { ...next, doors: [{ ...next.doors[0], family: 'pallet' as const }] };
-    const tooFar = dragHandle({ ...pallet, notchW: 0.3 }, { type: 'notchW', notch: 'tr' }, [inToMm(48), 0]);
-    expect(tooFar.notchW).toBeCloseTo(0.3, 6); // 48" pallet door needs 60" of wall
+    const next = dragHandle(c, { type: 'notchW', notch: 'tr' }, [inToMm(54), 0]);
+    expect(next.notchW).toBeCloseTo(42 / 96, 6); // 54" wall left: fits
+    const pallet = { ...c, doors: [{ ...c.doors[0], family: 'pallet' as const }] };
+    const tooFar = dragHandle(pallet, { type: 'notchW', notch: 'tr' }, [inToMm(54), 0]);
+    expect(tooFar.notchW).toBeCloseTo(0.2, 6); // a 48" pallet door needs 65" of wall
   });
 });
 

@@ -53,6 +53,7 @@ export interface Compartment {
   /** Notch size as a fraction of the box, 0–1. */
   notchW: number;
   notchD: number;
+  /** Wall panel height (the ceiling panel sits on top). */
   height: number;
   wallThickness: number;
   doors: Door[];

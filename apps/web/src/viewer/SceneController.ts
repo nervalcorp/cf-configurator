@@ -136,6 +136,13 @@ export class SceneController {
     this.controls.update();
   }
 
+  /** Point the camera at a world point (metres) from a direction. Used by ?debug renders. */
+  look(target: [number, number, number], from: [number, number, number]) {
+    this.controls.target.set(...target);
+    this.camera.position.set(...from);
+    this.controls.update();
+  }
+
   screenshot() {
     this.renderer.render(this.scene, this.camera);
     const url = this.renderer.domElement.toDataURL('image/png');
