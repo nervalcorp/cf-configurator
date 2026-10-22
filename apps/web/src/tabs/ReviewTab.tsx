@@ -5,11 +5,9 @@ import { TABS, useActiveCompartment, useStore } from '../store';
 import { Section } from '../shell/controls';
 
 const FINISH_NAMES: Record<string, string> = {
-  'stucco-aluminum': 'Stucco aluminum',
-  'stucco-galvanized': 'Stucco galvanized',
-  'stucco-stainless': 'Stucco stainless',
-  stainless: 'Stainless steel',
   white: 'White coated',
+  'grey-white': 'Grey white coated',
+  decal: 'Logo decals',
   custom: 'Custom colour',
 };
 const FLOOR_NAMES: Record<string, string> = { standard: 'Standard', durafloor: 'DuraFloor', recessed: 'Recessed', none: 'No floor' };

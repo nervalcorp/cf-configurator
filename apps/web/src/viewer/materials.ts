@@ -3,16 +3,30 @@ import type { ExteriorFinish } from '@wic/core';
 
 /** Surface feel per stock finish. Colour comes from the configuration. */
 const FINISH_SURFACE: Record<ExteriorFinish, { roughness: number; metalness: number }> = {
-  'stucco-aluminum': { roughness: 0.55, metalness: 0.15 },
-  'stucco-galvanized': { roughness: 0.6, metalness: 0.2 },
-  'stucco-stainless': { roughness: 0.45, metalness: 0.3 },
-  stainless: { roughness: 0.25, metalness: 0.55 },
   white: { roughness: 0.4, metalness: 0.05 },
-  custom: { roughness: 0.55, metalness: 0.15 },
+  'grey-white': { roughness: 0.42, metalness: 0.05 },
+  decal: { roughness: 0.45, metalness: 0.05 },
+  custom: { roughness: 0.45, metalness: 0.05 },
 };
 
 export class Materials {
-  exterior = new THREE.MeshStandardMaterial({ color: '#c4c8cc', roughness: 0.55, metalness: 0.15 });
+  /** Outside face of the wall panels; carries the decal map when that finish is chosen. */
+  exterior = new THREE.MeshStandardMaterial({ color: '#f0f0f0', roughness: 0.45, metalness: 0.05 });
+  /** Outside faces of corner posts: the finish colour (decal background) without the map. */
+  exteriorPlain = new THREE.MeshStandardMaterial({ color: '#f0f0f0', roughness: 0.45, metalness: 0.05 });
+  badgeBody = new THREE.MeshStandardMaterial({ color: '#283442', roughness: 0.5 });
+  /** Logo face of the door badge; falls back to plain navy until the logo loads. */
+  badgeFace = new THREE.MeshStandardMaterial({ color: '#283442', roughness: 0.4 });
+  /** Red tint over parts with a problem. */
+  flag = new THREE.MeshBasicMaterial({
+    color: 0xff1a1a,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
   roof = new THREE.MeshStandardMaterial({
     color: '#c4c8cc',
     transparent: true,
@@ -34,12 +48,26 @@ export class Materials {
   edge = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.22 });
   dimLine = new THREE.LineBasicMaterial({ color: 0xdd3333 });
 
-  setFinish(finish: ExteriorFinish, color: string) {
+  /** Colour of the outside; with a decal map the panel colour stays white so the map shows true. */
+  setFinish(finish: ExteriorFinish, color: string, decal: THREE.Texture | null) {
     const s = FINISH_SURFACE[finish];
-    this.exterior.color.set(color);
-    this.exterior.roughness = s.roughness;
-    this.exterior.metalness = s.metalness;
+    for (const m of [this.exterior, this.exteriorPlain]) {
+      m.roughness = s.roughness;
+      m.metalness = s.metalness;
+    }
+    this.exteriorPlain.color.set(color);
     this.roof.color.set(color);
+    if (this.exterior.map !== decal) {
+      this.exterior.map = decal;
+      this.exterior.needsUpdate = true;
+    }
+    this.exterior.color.set(decal ? '#ffffff' : color);
+  }
+
+  setBadge(tex: THREE.Texture | null) {
+    this.badgeFace.map = tex;
+    this.badgeFace.color.set(tex ? '#ffffff' : '#283442');
+    this.badgeFace.needsUpdate = true;
   }
 
   setWireframe(on: boolean) {
@@ -47,17 +75,18 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
   shared(): THREE.Material[] {
-    return [...this.meshMaterials(), this.edge, this.dimLine];
+    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag];
   }
 
   dispose() {
     for (const m of this.meshMaterials()) m.dispose();
     this.edge.dispose();
     this.dimLine.dispose();
+    this.flag.dispose();
   }
 }

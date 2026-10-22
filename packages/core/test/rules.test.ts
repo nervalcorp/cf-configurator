@@ -12,6 +12,12 @@ describe('normalize', () => {
     expect(c.boxW).toBe(LIMITS.box.min);
     expect(c.notchW).toBe(0.5);
   });
+  it('uses the decal background as the wall colour for logo decals', () => {
+    const c = defaultCompartment();
+    const n = normalizeCompartment({ ...c, finishes: { ...c.finishes, exterior: 'decal', decal: { ...c.finishes.decal, background: '#112233', tile: 1 } } });
+    expect(n.finishes.exteriorColor).toBe('#112233');
+    expect(n.finishes.decal.tile).toBe(LIMITS.decal.tileMin);
+  });
   it('locks the colour to the chosen stock finish', () => {
     const c = defaultCompartment();
     const n = normalizeCompartment({ ...c, finishes: { ...c.finishes, exterior: 'white', exteriorColor: '#123456' } });
@@ -76,9 +82,16 @@ describe('migrate', () => {
     const v1 = { schema: 1, site: { type: 'indoor' }, compartments: [{ ...defaultCompartment(), doors: undefined, door: { width: 863.6, offset: 400, hinge: 'left' } }] };
     const cfg = normalize(migrate(v1));
     const d = cfg.compartments[0].doors[0];
-    expect(cfg.schema).toBe(2);
+    expect(cfg.schema).toBe(3);
     expect([d.wall, d.hinge, d.family]).toEqual([2, 'left', 'man']);
     expect(d.offset).toBeCloseTo(400, 6);
+  });
+  it('turns retired stucco finishes into White Coated', () => {
+    const c = defaultCompartment();
+    const v2 = { schema: 2, site: { type: 'indoor' }, compartments: [{ ...c, finishes: { exterior: 'stucco-aluminum', exteriorColor: '#c4c8cc', floor: 'standard' } }] };
+    const f = normalize(migrate(v2)).compartments[0].finishes;
+    expect(f.exterior).toBe('white');
+    expect(f.decal.angle).toBe(45);
   });
   it('rejects unknown files', () => {
     expect(() => migrate({ schema: 99 })).toThrow(/schema/);

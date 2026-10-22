@@ -14,13 +14,18 @@ import { formatFeetInches, formatInches } from './units';
 
 export type TabId = 'layout' | 'finishes' | 'doors' | 'glass' | 'refrigeration' | 'accessories' | 'review';
 
+/** What an issue is about, so the 3D view can mark it. */
+export type IssueTarget = { type: 'door'; id: string } | { type: 'wall'; edge: number } | { type: 'floor' };
+
 export interface Issue {
   compartmentId: string;
   tab: TabId;
   severity: 'error' | 'warning';
   message: string;
-  /** Door id when the issue is about one door. */
+  /** Door id when the issue is about one door (the Doors tab selects it). */
   ref?: string;
+  /** Parts to mark in red in the 3D view. */
+  targets?: IssueTarget[];
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -49,8 +54,13 @@ export function normalizeCompartment(c: Compartment): Compartment {
   let floor = c.finishes.floor;
   // A freezer always needs an insulated floor.
   if (c.temperature === 'freezer' && floor === 'none') floor = 'standard';
+  const ext = c.finishes.exterior;
   const exteriorColor =
-    c.finishes.exterior === 'custom' ? c.finishes.exteriorColor : FINISH_COLORS[c.finishes.exterior];
+    ext === 'custom' ? c.finishes.exteriorColor : ext === 'decal' ? c.finishes.decal.background : FINISH_COLORS[ext];
+  const decal = {
+    ...c.finishes.decal,
+    tile: clamp(c.finishes.decal.tile, LIMITS.decal.tileMin, LIMITS.decal.tileMax),
+  };
   const base: Compartment = {
     ...c,
     boxW: clamp(c.boxW, LIMITS.box.min, LIMITS.box.max),
@@ -58,7 +68,7 @@ export function normalizeCompartment(c: Compartment): Compartment {
     notchW: shape.notch === 'none' ? c.notchW : clamp(c.notchW, r.nwMin, r.nwMax),
     notchD: shape.notch === 'none' ? c.notchD : clamp(c.notchD, r.ndMin, r.ndMax),
     height: clamp(c.height, LIMITS.height.min, LIMITS.height.max),
-    finishes: { ...c.finishes, floor, exteriorColor },
+    finishes: { ...c.finishes, floor, exteriorColor, decal },
   };
   const fp = footprint(base.shape, base.boxW, base.boxD, base.notchW, base.notchD);
   const lengths = wallFrames(fp, base.wallThickness).map((w) => w.length);
@@ -76,8 +86,15 @@ export function validateCompartment(c: Compartment): Issue[] {
   const fp = footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
   const frames = wallFrames(fp, c.wallThickness);
   const wallH = c.height;
-  const err = (tab: TabId, message: string, ref?: string) =>
-    issues.push({ compartmentId: id, tab, severity: 'error', message, ref });
+  const err = (tab: TabId, message: string, ref?: string, targets?: IssueTarget[]) =>
+    issues.push({
+      compartmentId: id,
+      tab,
+      severity: 'error',
+      message,
+      ref,
+      targets: targets ?? (ref ? [{ type: 'door', id: ref }] : undefined),
+    });
 
   if (c.doors.length === 0) {
     issues.push({ compartmentId: id, tab: 'doors', severity: 'warning', message: 'This compartment has no door.' });
@@ -100,7 +117,10 @@ export function validateCompartment(c: Compartment): Issue[] {
     }
     const [lo, hi] = offsetRange(d, wall.length);
     if (hi < lo) {
-      err('doors', `${name} needs ${formatInches(doorMinRun(d))} of wall; wall ${wall.letter} has ${formatInches(wall.length)} inside.`, d.id);
+      err('doors', `${name} needs ${formatInches(doorMinRun(d))} of wall; wall ${wall.letter} has ${formatInches(wall.length)} inside.`, d.id, [
+        { type: 'door', id: d.id },
+        { type: 'wall', edge: d.wall },
+      ]);
     } else if (d.offset < lo - 0.01 || d.offset > hi + 0.01) {
       err('doors', `${name} runs past the end of wall ${wall.letter}.`, d.id);
     }
@@ -109,13 +129,18 @@ export function validateCompartment(c: Compartment): Issue[] {
       if (o.wall !== d.wall) return;
       const s = doorSpan(o);
       if (mine.from < s.to + LIMITS.doorGap && s.from < mine.to + LIMITS.doorGap) {
-        err('doors', `${name} and door ${k + j + 2} are too close on wall ${wall.letter}${f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide' ? ' (sliding doors need room to open)' : ''}.`, d.id);
+        err(
+          'doors',
+          `${name} and door ${k + j + 2} are too close on wall ${wall.letter}${f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide' ? ' (sliding doors need room to open)' : ''}.`,
+          d.id,
+          [{ type: 'door', id: d.id }, { type: 'door', id: o.id }],
+        );
       }
     });
   });
 
   if (c.temperature === 'freezer' && c.finishes.floor === 'none') {
-    err('finishes', 'A freezer needs a floor.');
+    err('finishes', 'A freezer needs a floor.', undefined, [{ type: 'floor' }]);
   }
   return issues;
 }

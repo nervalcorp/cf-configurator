@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDoor,
+  buildCompartment,
+  flaggedParts,
   defaultCompartment,
   doorSku,
   doorSpan,
@@ -85,6 +87,17 @@ describe('door rules', () => {
     const c = updateDoor(defaultCompartment(), 'd1', { family: 'slide-pallet', offset: inToMm(10) });
     expect(validateCompartment({ ...c, height: inToMm(100) }).some((i) => /high/.test(i.message))).toBe(true);
     expect(validateCompartment({ ...c, height: inToMm(104) }).filter((i) => /high/.test(i.message))).toEqual([]);
+  });
+
+  it('marks every part of a flagged door, and only that door', () => {
+    let c = addDoor({ ...defaultCompartment(), height: inToMm(110), boxW: inToMm(240) }).compartment;
+    c = moveDoor(c, 'd2', 1); // second, valid door on another wall
+    c = updateDoor(c, 'd1', { family: 'rollup', offset: inToMm(4) });
+    const tree = buildCompartment(c, 'indoor');
+    const flags = flaggedParts(tree, validateCompartment(c));
+    const d1 = tree.parts.filter((p) => 'doorId' in p && p.doorId === 'd1').map((p) => p.id);
+    expect([...flags.keys()].sort()).toEqual(d1.sort());
+    expect(flags.get(d1[0])![0]).toMatch(/10' 0"/);
   });
 
   it('allows the roll-up only in a cooler with 120" panels', () => {

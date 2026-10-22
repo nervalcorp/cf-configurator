@@ -94,9 +94,19 @@ describe('buildCompartment', () => {
     expect(semi.size[0]).toBeGreaterThan(inToMm(34)); // overlaps the opening
     expect(full.size[0]).toBeLessThan(inToMm(34));
     const fullTree = buildCompartment(updateDoor(c, 'd1', { series: '13478' }), 'indoor');
-    expect(fullTree.parts.some((p) => p.kind === 'door-frame')).toBe(true);
-    expect(buildCompartment(c, 'indoor').parts.some((p) => p.kind === 'door-frame')).toBe(false);
+    const frameOf = (t: typeof fullTree) => t.parts.find((p): p is BoxPart => p.kind === 'door-frame' && p.id.endsWith('frame-l'))!;
+    const semiFrame = frameOf(buildCompartment(c, 'indoor'));
+    const fullFrame = frameOf(fullTree);
+    expect(semiFrame.size[0]).toBeGreaterThan(fullFrame.size[0]); // heavier frame
+    expect(semiFrame.size[2]).toBeGreaterThan(fullFrame.size[2]); // further proud
     expect(T).toBeGreaterThan(0);
+  });
+
+  it('marks outside faces on outside corner posts only', () => {
+    const t = buildCompartment(comp({ shape: 'cutout-a', notchW: 0.2, notchD: 0.2 }), 'indoor');
+    const posts = t.parts.filter((p): p is BoxPart => p.kind === 'post');
+    expect(posts.filter((p) => p.exteriorFaces!.length === 2)).toHaveLength(5);
+    expect(posts.filter((p) => p.exteriorFaces!.length === 0)).toHaveLength(1);
   });
 
   it('gives swing doors three cam-lift hinges and a self closer', () => {

@@ -8,3 +8,4 @@ export * from './layout/walls';
 export * from './layout/build';
 export * from './layout/drag';
 export * from './layout/doors';
+export * from './layout/flags';

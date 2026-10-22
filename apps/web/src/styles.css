@@ -77,6 +77,11 @@ canvas { display: block; }
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
   padding: 6px 12px; border-radius: 6px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,.2);
 }
+.hover-tip.has-problems { white-space: normal; max-width: 320px; }
+.hover-problem {
+  font-family: var(--font-ui); font-weight: 500; font-size: 12px; line-height: 1.45;
+  color: #fecaca; margin-top: 4px; padding-left: 10px; border-left: 2px solid #f87171;
+}
 
 /* ── Right panel ── */
 .right-panel {
@@ -189,6 +194,17 @@ canvas { display: block; }
 .shape-btn-label { font-size: 9.5px; font-weight: 600; color: var(--text-mid); text-align: center; line-height: 1.2; }
 .shape-btn.active .shape-btn-label { color: var(--accent); }
 .floor-plan { width: 100%; height: auto; aspect-ratio: 1; border: 1.5px solid var(--border); border-radius: var(--radius); cursor: crosshair; background: var(--fp-bg); touch-action: none; }
+
+/* decal */
+.decal-preview { position: relative; height: 96px; border-radius: var(--radius); overflow: hidden; border: 1.5px solid var(--border); margin-bottom: 12px; }
+.decal-preview-tiles {
+  position: absolute; inset: -60%; transform: rotate(45deg);
+  background-repeat: repeat; background-size: 64px auto; background-position: center;
+}
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.btn-link { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 12.5px; cursor: pointer; padding: 0; margin-top: 12px; }
+.btn-link:hover { text-decoration: underline; }
 
 /* doors */
 .door-list { list-style: none; display: grid; gap: 6px; margin-bottom: 12px; }

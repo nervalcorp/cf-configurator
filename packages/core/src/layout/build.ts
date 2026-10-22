@@ -46,14 +46,20 @@ export type BoxKind =
   | 'trim'
   | 'latch';
 
+export type Face = '+x' | '-x' | '+z' | '-z';
+
 export interface BoxPart extends Base {
   kind: BoxKind;
   center: Vec3;
   /** Size along the part's local axes (before rotationY). */
   size: Vec3;
+  /** Faces that are on the outside of the walk-in (corner posts). */
+  exteriorFaces?: Face[];
   rotationY?: number;
   /** Colour override (traffic-door finish, handle finish). */
   color?: string;
+  /** Show the brand logo on the front (local +Z) face. */
+  logo?: boolean;
   joint?: number;
   doorId?: string;
 }
@@ -198,6 +204,9 @@ export function wallProfile(length: number, height: number, openings: [number, n
   return wallProfiles(length, height, openings)[0] ?? [];
 }
 
+/** Semi-buried doors have a heavier frame than full-buried ones. */
+const SEMI_FRAME = inToMm(3);
+
 /** The hole a door needs in its wall: [from, to, height] along the wall's inside run. */
 function doorOpening(d: Door, wallH: number): [number, number, number] {
   const fam = getDoorFamily(d.family);
@@ -205,7 +214,7 @@ function doorOpening(d: Door, wallH: number): [number, number, number] {
   const x0 = d.offset;
   const x1 = d.offset + fam.width;
   const mount = doorMount(d);
-  if (mount === 'semi-buried') return [x0, x1, fam.height];
+  if (mount === 'semi-buried') return [x0 - SEMI_FRAME, x1 + SEMI_FRAME, fam.height + SEMI_FRAME];
   if (fam.kind === 'rollup') return [x0 - F, x1 + F, Math.min(fam.height, wallH)];
   return [x0 - F, x1 + F, fam.height + F];
 }
@@ -236,11 +245,14 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
   const signs = postSigns(fp);
   fp.forEach((p, i) => {
     const joint = jointNumber(i, raw, front);
+    const inside = isInsideCorner(fp, i);
     parts.push({
       kind: 'post',
       id: `${c.id}:joint-${joint}`,
-      label: `Joint ${joint}${isInsideCorner(fp, i) ? ' (inside)' : ''}`,
+      label: `Joint ${joint}${inside ? ' (inside)' : ''}`,
       joint,
+      // An outside corner shows two faces to the outside; an inside corner is hidden by the walls.
+      exteriorFaces: inside ? [] : [signs[i][0] > 0 ? '-x' : '+x', signs[i][1] > 0 ? '-z' : '+z'],
       center: [p[0] + (signs[i][0] * T) / 2, y0 + wallH / 2, p[1] + (signs[i][1] * T) / 2],
       size: [T, wallH, T],
     });
@@ -394,13 +406,20 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
       const OV = inToMm(1.5); // leaf overlap past the opening
       const SLAB = inToMm(2.5); // leaf thickness standing proud of the wall
       leafTop = H + OV;
-      front = T + SLAB;
       hingeEdge = d.hinge === 'right' ? x1 + OV : x0 - OV;
       latchEdge = d.hinge === 'right' ? x0 - OV : x1 + OV;
-      onWall = T;
-      // Plug inside the opening, then the slab on the outside face.
+      // Frame ring around the opening, heavier and further proud of the wall than a
+      // full-buried frame; the slab overlaps its inner half.
+      const SF = SEMI_FRAME;
+      const proud = 20;
+      onWall = T + proud;
+      out.push(box('door-frame', 'frame-l', x0 - SF / 2, (H + SF) / 2, (T + proud) / 2, [SF, H + SF, T + proud]));
+      out.push(box('door-frame', 'frame-r', x1 + SF / 2, (H + SF) / 2, (T + proud) / 2, [SF, H + SF, T + proud]));
+      out.push(box('door-frame', 'frame-t', mid, H + SF / 2, (T + proud) / 2, [W, SF, T + proud]));
+      // Plug inside the opening, then the slab standing proud of the frame.
+      front = T + proud + SLAB;
       out.push(box('door-leaf', 'plug', mid, H / 2, T / 2, [W - 6, H - 6, T]));
-      out.push(box('door-leaf', 'leaf', mid, leafTop / 2, T + SLAB / 2, [W + 2 * OV, leafTop, SLAB], { label }));
+      out.push(box('door-leaf', 'leaf', mid, leafTop / 2, T + proud + SLAB / 2, [W + 2 * OV, leafTop, SLAB], { label }));
     } else {
       // Full-buried: frame ring proud of the wall by 10 mm, leaf flush inside it, dark gasket between.
       leafTop = H + F;
@@ -445,7 +464,8 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
 
     // Brand badge high on the leaf; higher when a window takes its place.
     const badgeV = d.window ? leafTop * (1 - 0.09) : leafTop * (1 - 0.2);
-    out.push(box('badge', 'badge', mid, badgeV, front + 2, [110, 120, 4], { color: DARK, label: 'ICC badge' }));
+    // Logo proportions (422 × 270); the logo goes on the front face.
+    out.push(box('badge', 'badge', mid, badgeV, front + 2, [150, 96, 4], { color: DARK, label: 'Badge', logo: true }));
 
     if (d.window) {
       // 12" × 16" heated window, white trim, top edge about 19% down the leaf.

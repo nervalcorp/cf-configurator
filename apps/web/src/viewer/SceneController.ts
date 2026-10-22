@@ -7,9 +7,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ComponentTree, Compartment, ExteriorFinish } from '@wic/core';
 import { activeBrand } from '../theme/brands';
 import { Materials } from './materials';
+import { badgeTexture, decalTexture, loadImage, svgDataUrl } from './textures';
 import { type Built, buildMeshes, disposeTree } from './buildMeshes';
 
 const MM = 0.001;
+
+export interface Hover {
+  label: string | null;
+  problems: string[];
+}
 const DEFAULT_DIR = new THREE.Vector3(28, 22, 36).normalize();
 
 export class SceneController {
@@ -30,13 +36,17 @@ export class SceneController {
   private lightAngle = 0.9;
   private raf = 0;
   private resizeObs: ResizeObserver;
-  private onHover: (label: string | null, x: number, y: number) => void;
+  private onHover: (hover: Hover | null, x: number, y: number) => void;
+  private badgeKey: string | null = null;
+  private decalKey: string | null = null;
+  private decalTex: THREE.Texture | null = null;
+  private finish: { finish: ExteriorFinish; color: string } = { finish: 'white', color: '#f0f0f0' };
   private axisCtx: CanvasRenderingContext2D | null;
 
   constructor(
     private host: HTMLElement,
     axisCanvas: HTMLCanvasElement | null,
-    onHover: (label: string | null, x: number, y: number) => void,
+    onHover: (hover: Hover | null, x: number, y: number) => void,
   ) {
     this.onHover = onHover;
     this.axisCtx = axisCanvas?.getContext('2d') ?? null;
@@ -97,19 +107,70 @@ export class SceneController {
     this.loop();
   }
 
-  update(tree: ComponentTree, c: Compartment) {
-    this.mats.setFinish(c.finishes.exterior as ExteriorFinish, c.finishes.exteriorColor);
+  update(tree: ComponentTree, c: Compartment, flags: Map<string, string[]>) {
+    this.finish = { finish: c.finishes.exterior, color: c.finishes.exteriorColor };
+    this.applyDecal(c);
     this.clearHover();
     const showDims = this.built?.dims.visible ?? true;
     if (this.built) {
       this.model.remove(this.built.root);
       disposeTree(this.built.root, this.keepSet());
     }
-    this.built = buildMeshes(tree, this.mats);
+    this.built = buildMeshes(tree, this.mats, flags);
     this.built.dims.visible = showDims;
     this.model.add(this.built.root);
     this.size.set(tree.overall.width * MM, tree.overall.height * MM, tree.overall.depth * MM);
     this.placeKeyLight();
+  }
+
+  /** Brand logo for door badges (SVG markup or image URL); null shows a plain badge. */
+  setLogo(logo: string | null) {
+    if (logo === this.badgeKey) return;
+    this.badgeKey = logo;
+    if (!logo) return this.mats.setBadge(null);
+    const src = logo.trim().startsWith('<') ? svgDataUrl(logo) : logo;
+    loadImage(src)
+      .then((img) => {
+        if (this.badgeKey !== logo) return;
+        this.mats.badgeFace.map?.dispose();
+        this.mats.setBadge(badgeTexture(img));
+      })
+      .catch(() => this.mats.setBadge(null));
+  }
+
+  /** Default decal image when the configuration has no upload. */
+  defaultDecal: string | null = null;
+
+  private applyDecal(c: Compartment) {
+    const d = c.finishes.decal;
+    const useDecal = c.finishes.exterior === 'decal';
+    const raw = d.image ?? this.defaultDecal;
+    const src = raw && raw.trim().startsWith('<') ? svgDataUrl(raw) : raw;
+    const key = useDecal && src ? `${src.length}:${src.slice(-64)}|${d.background}` : null;
+    const place = (tex: THREE.Texture | null) => {
+      if (tex) {
+        // Wall UVs are millimetres along the wall, so one repeat = one tile.
+        tex.repeat.set(1 / d.tile, 1 / d.tile);
+        tex.rotation = (d.angle * Math.PI) / 180;
+      }
+      this.mats.setFinish(this.finish.finish, this.finish.color, tex);
+    };
+    if (key === this.decalKey) return place(this.decalTex);
+    this.decalKey = key;
+    if (!key || !src) {
+      this.decalTex?.dispose();
+      this.decalTex = null;
+      return place(null);
+    }
+    place(this.decalTex); // keep the old tiles until the new ones load
+    loadImage(src)
+      .then((img) => {
+        if (this.decalKey !== key) return;
+        this.decalTex?.dispose();
+        this.decalTex = decalTexture(img, d.background);
+        place(this.decalTex);
+      })
+      .catch(() => place(null));
   }
 
   setDims(on: boolean) {
@@ -159,6 +220,8 @@ export class SceneController {
     this.renderer.domElement.removeEventListener('pointerleave', this.clearHover);
     this.controls.dispose();
     if (this.built) disposeTree(this.built.root, this.keepSet());
+    this.decalTex?.dispose();
+    this.mats.badgeFace.map?.dispose();
     this.mats.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -199,7 +262,11 @@ export class SceneController {
         mesh.material = this.mats.highlight;
       }
     }
-    this.onHover(mesh ? (mesh.userData.label as string) : null, e.clientX - rect.left, e.clientY - rect.top);
+    this.onHover(
+      mesh ? { label: (mesh.userData.label as string | undefined) ?? null, problems: (mesh.userData.problems as string[] | undefined) ?? [] } : null,
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
   };
 
   private clearHover = () => {

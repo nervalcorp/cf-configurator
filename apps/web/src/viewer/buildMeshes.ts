@@ -4,7 +4,7 @@
  * All geometry is in mm; the caller scales the root group to metres.
  */
 import * as THREE from 'three';
-import type { BoxPart, ComponentTree, Dimension, Part, SlabPart, WallPart } from '@wic/core';
+import type { BoxPart, ComponentTree, Dimension, Face, Part, SlabPart, WallPart } from '@wic/core';
 import type { Materials } from './materials';
 
 export interface Built {
@@ -14,7 +14,14 @@ export interface Built {
   pickable: THREE.Mesh[];
 }
 
-export function buildMeshes(tree: ComponentTree, mats: Materials): Built {
+/** BoxGeometry material slots: [+x, -x, +y, -y, +z, -z]. */
+const FACE_SLOT: Record<Face, number> = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
+
+/**
+ * @param flags part id → problems with that part; flagged parts get a red overlay
+ *              and their messages on hover.
+ */
+export function buildMeshes(tree: ComponentTree, mats: Materials, flags: Map<string, string[]> = new Map()): Built {
   const root = new THREE.Group();
   const dims = new THREE.Group();
   const pickable: THREE.Mesh[] = [];
@@ -24,15 +31,22 @@ export function buildMeshes(tree: ComponentTree, mats: Materials): Built {
     if (!mesh) continue;
     mesh.castShadow = part.kind !== 'roof';
     mesh.receiveShadow = true;
-    mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined };
+    const problems = flags.get(part.id);
+    mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined, problems };
     root.add(mesh);
+    if (problems) {
+      const overlay = new THREE.Mesh(mesh.geometry, mats.flag);
+      overlay.renderOrder = 2;
+      overlay.userData.overlay = true;
+      mesh.add(overlay);
+    }
     if (OUTLINED.has(part.kind)) {
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 15), mats.edge);
       edges.position.copy(mesh.position);
       edges.rotation.copy(mesh.rotation);
       root.add(edges);
     }
-    if (part.label && part.kind !== 'floor' && part.kind !== 'roof') pickable.push(mesh);
+    if ((part.label && part.kind !== 'floor' && part.kind !== 'roof') || problems) pickable.push(mesh);
   }
 
   for (const d of tree.dimensions) addDimension(dims, d, mats);
@@ -44,12 +58,19 @@ const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame
 
 function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
   switch (part.kind) {
-    case 'post':
-      return boxMesh(part, mats.interior);
+    case 'post': {
+      const slots: THREE.Material[] = Array(6).fill(mats.interior);
+      for (const f of part.exteriorFaces ?? []) slots[FACE_SLOT[f]] = mats.exteriorPlain;
+      return boxMesh(part, slots);
+    }
     case 'wall':
       return wallMesh(part, mats);
-    case 'badge':
-      return boxMesh(part, tinted(mats.threshold, part.color ?? '#1f2a33'));
+    case 'badge': {
+      if (!part.logo) return boxMesh(part, tinted(mats.threshold, part.color ?? '#1f2a33'));
+      const slots: THREE.Material[] = Array(6).fill(mats.badgeBody);
+      slots[4] = mats.badgeFace;
+      return boxMesh(part, slots);
+    }
     case 'gasket':
       return boxMesh(part, mats.threshold);
     case 'trim':
@@ -210,6 +231,7 @@ function labelSprite(text: string) {
 
 export function disposeTree(obj: THREE.Object3D, keep: Set<THREE.Material>) {
   obj.traverse((o) => {
+    if (o.userData.overlay) return; // shares its geometry with the parent
     const anyO = o as THREE.Mesh;
     anyO.geometry?.dispose();
     const m = anyO.material as THREE.Material | THREE.Material[] | undefined;

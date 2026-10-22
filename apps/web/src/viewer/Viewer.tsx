@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildCompartment } from '@wic/core';
+import { buildCompartment, flaggedParts, validate } from '@wic/core';
+import { activeBrand } from '../theme/brands';
 import { useActiveCompartment, useStore, viewerApi } from '../store';
-import { SceneController } from './SceneController';
+import { type Hover, SceneController } from './SceneController';
 
 export function Viewer() {
   const host = useRef<HTMLDivElement>(null);
   const axes = useRef<HTMLCanvasElement>(null);
   const ctrl = useRef<SceneController | null>(null);
-  const [tip, setTip] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<(Hover & { x: number; y: number }) | null>(null);
 
   const comp = useActiveCompartment();
   const site = useStore((s) => s.config.site.type);
+  const config = useStore((s) => s.config);
+  const flags = useMemo(() => flaggedParts(buildCompartment(comp, site), validate(config)), [comp, site, config]);
   const { showDims, wireframe, autoRotate, lightOrbit } = useStore((s) => s.ui);
   const tree = useMemo(() => buildCompartment(comp, site), [comp, site]);
 
   useEffect(() => {
-    const c = new SceneController(host.current!, axes.current, (label, x, y) =>
-      setTip(label ? { label, x, y } : null),
+    const c = new SceneController(host.current!, axes.current, (hover, x, y) =>
+      setTip(hover && (hover.label || hover.problems.length) ? { ...hover, x, y } : null),
     );
+    c.setLogo(activeBrand.logo);
+    c.defaultDecal = activeBrand.logo;
     ctrl.current = c;
     viewerApi.current = { resetView: () => c.resetView(), screenshot: () => c.screenshot() };
     if (new URLSearchParams(location.search).has('debug')) {
@@ -35,12 +40,12 @@ export function Viewer() {
   useEffect(() => {
     const c = ctrl.current;
     if (!c) return;
-    c.update(tree, comp);
+    c.update(tree, comp, flags);
     if (framedFor.current !== site) {
       framedFor.current = site;
       c.resetView();
     }
-  }, [tree, comp, site]);
+  }, [tree, comp, site, flags]);
 
   useEffect(() => ctrl.current?.setDims(showDims), [showDims, tree]);
   useEffect(() => ctrl.current?.setWireframe(wireframe), [wireframe]);
@@ -51,8 +56,13 @@ export function Viewer() {
     <div className="canvas-area" ref={host}>
       <canvas className="axis-gizmo" ref={axes} width={120} height={120} aria-hidden="true" />
       {tip && (
-        <div className="hover-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} role="status">
-          {tip.label}
+        <div className={`hover-tip${tip.problems.length ? ' has-problems' : ''}`} style={{ left: tip.x + 14, top: tip.y + 14 }} role="status">
+          {tip.label && <div>{tip.label}</div>}
+          {tip.problems.map((m) => (
+            <div key={m} className="hover-problem">
+              {m}
+            </div>
+          ))}
         </div>
       )}
     </div>

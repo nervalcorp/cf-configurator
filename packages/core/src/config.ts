@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { DoorFamilyId, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -15,13 +15,19 @@ export type FloorType = 'standard' | 'durafloor' | 'recessed' | 'none';
 export type RampType = 'interior' | 'exterior' | 'none';
 export type HingeSide = 'left' | 'right';
 export type Swing = 'out' | 'in';
-export type ExteriorFinish =
-  | 'stucco-aluminum'
-  | 'stucco-galvanized'
-  | 'stucco-stainless'
-  | 'stainless'
-  | 'white'
-  | 'custom';
+export type ExteriorFinish = 'white' | 'grey-white' | 'decal' | 'custom';
+
+/** Logo decal tiled over the outside of the walls. */
+export interface DecalParams {
+  /** Uploaded image as a data URL; null uses the brand's default logo. */
+  image: string | null;
+  /** Wall colour behind and between the tiles. */
+  background: string;
+  /** Width of one tile (logo plus spacing). */
+  tile: number;
+  /** Tile rotation in degrees. */
+  angle: number;
+}
 
 export interface Door {
   id: string;
@@ -62,6 +68,7 @@ export interface Compartment {
     exterior: ExteriorFinish;
     /** Hex colour used by the 3D view; for `custom` it is the user's pick. */
     exteriorColor: string;
+    decal: DecalParams;
     floor: FloorType;
   };
   /** Accessories tab. */
@@ -84,15 +91,29 @@ export const LIMITS = {
   doorThickness: inToMm(5),
   /** Clear wall between the frames or travel zones of two doors on one wall. */
   doorGap: inToMm(4),
+  decal: {
+    /** Largest decal upload, before base64 encoding. */
+    maxBytes: 2 * 1024 * 1024,
+    types: ['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp'] as readonly string[],
+    tileMin: inToMm(12),
+    tileMax: inToMm(60),
+  },
 } as const;
 
+/** Base colour per finish. For `decal` it is the default background (the logo's navy). */
 export const FINISH_COLORS: Record<Exclude<ExteriorFinish, 'custom'>, string> = {
-  'stucco-aluminum': '#c4c8cc',
-  'stucco-galvanized': '#9ea3a8',
-  'stucco-stainless': '#b8bcc0',
-  stainless: '#d0d4d8',
   white: '#f0f0f0',
+  // CONFIRM: exact Grey White Coated colour.
+  'grey-white': '#d6d8da',
+  decal: '#283442',
 };
+
+export const defaultDecal = (): DecalParams => ({
+  image: null,
+  background: FINISH_COLORS.decal,
+  tile: inToMm(30),
+  angle: 45,
+});
 
 export function defaultCompartment(id = 'c1'): Compartment {
   return {
@@ -108,8 +129,9 @@ export function defaultCompartment(id = 'c1'): Compartment {
     // Wall 2 is the front edge of the default rectangle footprint.
     doors: [newDoor('d1', 2, inToMm(19))],
     finishes: {
-      exterior: 'stucco-aluminum',
-      exteriorColor: FINISH_COLORS['stucco-aluminum'],
+      exterior: 'white',
+      exteriorColor: FINISH_COLORS.white,
+      decal: defaultDecal(),
       floor: 'standard',
     },
     accessories: { ramp: 'interior' },
@@ -145,11 +167,13 @@ export function defaultConfiguration(): Configuration {
  * Throws on anything it cannot read so a bad file never half-loads.
  *
  * v1 → v2: the single front `door` became a `doors` list on any wall.
+ * v2 → v3: stucco and stainless finishes were retired (they become White
+ * Coated) and the logo decal finish was added.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if ((raw.schema !== 1 && raw.schema !== SCHEMA_VERSION) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -171,9 +195,21 @@ export function migrate(input: unknown): Configuration {
         ...rest,
         id: c.id ?? `c${i + 1}`,
         doors,
-        finishes: { ...base.finishes, ...c.finishes },
+        finishes: migrateFinishes(base.finishes, c.finishes),
         accessories: { ...base.accessories, ...c.accessories },
       };
     }),
   };
+}
+
+const FINISH_IDS: readonly ExteriorFinish[] = ['white', 'grey-white', 'decal', 'custom'];
+
+function migrateFinishes(base: Compartment['finishes'], f: Partial<Compartment['finishes']> | undefined): Compartment['finishes'] {
+  const merged = { ...base, ...f, decal: { ...base.decal, ...f?.decal } };
+  if (!FINISH_IDS.includes(merged.exterior)) {
+    // Retired stucco / stainless finishes.
+    merged.exterior = 'white';
+    merged.exteriorColor = FINISH_COLORS.white;
+  }
+  return merged;
 }

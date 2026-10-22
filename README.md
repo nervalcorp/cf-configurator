@@ -66,13 +66,21 @@ A compartment holds any number of doors, each on any wall. Each door records its
 | Forklift roll-up, custom (96" wide shown) | ICC-DR-96120 | none; coolers with 120" panels only |
 | Traffic, single / double | ICC-DR-3684DS / 7284DS -GR·WH·BK | finish |
 
-Semi-buried doors stand proud of the wall and overlap the opening; full-buried doors sit flush in their own frame. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
+Semi-buried doors stand proud of the wall on a heavier frame (3", 20 mm proud) and overlap the opening; full-buried doors sit flush in a 2" frame. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
 
 The roll-up opening runs the full 120" panel height; its drum housing sits above the walls and is not counted against the panel height. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
 
+## Finishes
+
+Outside of the walls: White Coated, Grey White Coated, Logo Decals, or a custom colour. Logo Decals tile an image across and down the outside of the walls, turned 45°, over a background colour (corner trim takes the background colour). The default image is the brand logo (`apps/web/src/assets/icc-logo.svg`); users can upload an SVG, PNG, JPG or WebP up to 2 MB, which is saved inside the configuration file. Tile size runs 12"–60".
+
+## Problems in the 3D view
+
+Every rule in `validate()` can name the parts it is about (`Issue.targets`: a door, a wall or the floor). `flaggedParts()` turns those into part ids, and the 3D view tints them red at 40% opacity and shows the messages on hover. A new rule only needs to set `targets` for its parts to be marked.
+
 ## Brand skins
 
-A skin is a `[data-theme="<id>"]` block in `apps/web/src/theme/tokens.css` plus an entry in `apps/web/src/theme/brands.ts` (footer words and the WebGL scene colours). Components only read the CSS variables.
+A skin is a `[data-theme="<id>"]` block in `apps/web/src/theme/tokens.css` plus an entry in `apps/web/src/theme/brands.ts` (footer words, the WebGL scene colours, and the logo used on door badges and as the default decal). The neutral skin carries the ICC logo for now. An iCoola skin must set `logo: null`: iCoola deliverables never show ICC. Components only read the CSS variables.
 
 ## Changes from the icoolaca build
 

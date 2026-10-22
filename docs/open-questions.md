@@ -7,8 +7,16 @@
 - **Not in the ICC catalog.** Jamb guards, kickplates, pressure-relief vents and strip curtains have no model yet, so they are not offered.
 - **Hinge kits.** ICC-1238SL/SR hinges are not added to the part list; assumed included with the door.
 
+## Finishes
+
+- **Grey White Coated colour.** Set to `#d6d8da` as a placeholder; send the real colour.
+- **Custom colour picker.** Kept, since it was not in the removal list. Remove it?
+- **Footer logo.** The ICC logo is only on door badges and decals so far. Put it in the footer too?
+
 ## Resolved
 
+- **Finishes** (2026-10-22). Stucco and stainless finishes retired (saved drafts become White Coated); Grey White Coated and Logo Decals added.
+- **Semi-buried frames** (2026-10-22). Semi-buried doors have a frame like full-buried, heavier.
 - **13478 vs 3478** (2026-10-19). 13478 is full-buried (flush in a frame), 3478 is semi-buried (stands proud of the wall). Window models are full-buried only. 3D models follow the ICC door pages.
 - **L/R in model numbers** (2026-10-19). Swing side seen from outside: an L door has its hinges on the left.
 - **Roll-up height** (2026-10-19). Coolers only, 120" panels only, opening the full panel height, drum housing above the walls and not counted.
