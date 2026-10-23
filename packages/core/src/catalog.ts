@@ -259,6 +259,10 @@ export interface ControlDef {
   width: number;
   height: number;
   depth: number;
+  /** Cable and gland hanging below the housing (they need clear wall too). */
+  tail?: number;
+  /** Built from product artwork (SVG shapes + photo) rather than boxes. */
+  artwork?: boolean;
   features: string[];
 }
 
@@ -269,8 +273,12 @@ export const CONTROLS: readonly ControlDef[] = [
     sku: 'ICC-TSC2000',
     label: 'Smart Control',
     width: inToMm(4.5),
-    height: inToMm(4),
+    // From the product artwork's proportions at 4.5" wide (515.6 × 487.7 units).
+    // CONFIRM: spec sheet says 4" tall.
+    height: inToMm((4.5 * 487.74) / 515.61),
     depth: inToMm(1),
+    tail: inToMm(1.85),
+    artwork: true,
     features: [
       'Wi-Fi, cloud data logging, Android and iOS app',
       'Dual power: 110V up to 1.5 HP, 220V up to 5 HP, single and three phase',
@@ -325,7 +333,8 @@ export function rampServes(d: { family: DoorFamilyId; glass: GlassParams }): boo
  */
 export const SHELVING = {
   sku: 'ICC-ACC-SHELVING-HD',
-  label: 'Heavy duty shelving, per door opening',
+  // Sold on its own, by quantity: one per bay (30" × 27", 5 shelves), with or without our glass doors.
+  label: 'Heavy duty shelving bay',
   shelfWidth: inToMm(30),
   shelfDepth: inToMm(27),
   post: inToMm(1.5),
@@ -333,7 +342,7 @@ export const SHELVING = {
   maxBays: 8,
   /** Gravity flow trays slope toward the front so product slides forward. */
   gravityTilt: (5 * Math.PI) / 180,
-  // CONFIRM: no model number on the page for the gravity flow tray.
+  gravitySku: 'ICC-GRAVITY-SHELF',
   gravityLabel: 'Gravity flow shelf tray',
   defaultHeight: inToMm(84),
 };

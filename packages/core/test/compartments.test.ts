@@ -11,6 +11,7 @@ import {
   normalize,
   overlappingCompartments,
   removeCompartment,
+  resizedPosition,
   updateDoor,
   validate,
   type RampPart,
@@ -50,6 +51,23 @@ describe('compartments', () => {
     const a = defaultCompartment();
     const b = { ...defaultCompartment('c2'), boxD: inToMm(96) };
     expect(besidePosition(b, a, 'behind').z).toBeCloseTo(-inToMm(75 + 48), 6);
+  });
+
+  it('grows away from a neighbour, and from the centre when alone', () => {
+    const { config } = addCompartment(defaultConfiguration(), (i, n) => defaultCompartment(i, n));
+    const [a, b] = config.compartments;
+    // c1 widens: its right edge (facing c2) stays put, it grows to the left
+    const wider = { ...a, boxW: a.boxW + inToMm(24) };
+    const pa = resizedPosition(config, a, wider);
+    expect(pa.x + wider.boxW / 2).toBeCloseTo(a.position.x + a.boxW / 2, 6);
+    // c2 widens: its left edge stays put
+    const wb = { ...b, boxW: b.boxW + inToMm(24) };
+    const pb = resizedPosition(config, b, wb);
+    expect(pb.x - wb.boxW / 2).toBeCloseTo(b.position.x - b.boxW / 2, 6);
+    // alone: centre
+    const solo = defaultConfiguration();
+    const c = solo.compartments[0];
+    expect(resizedPosition(solo, c, { ...c, boxW: c.boxW + 600 })).toEqual(c.position);
   });
 
   it('keeps at least one compartment', () => {

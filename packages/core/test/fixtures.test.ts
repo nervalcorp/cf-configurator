@@ -125,9 +125,13 @@ describe('controller', () => {
     expect(issues.some((i) => i.tab === 'refrigeration' && i.severity === 'error')).toBe(true);
   });
 
-  it('builds the TSC2000 with a face and a cable', () => {
-    const t = buildCompartment(defaultCompartment(), 'indoor');
-    expect(t.parts.some((p) => p.kind === 'screen')).toBe(true);
-    expect(t.parts.some((p) => p.kind === 'cable')).toBe(true);
+  it('builds the TSC2000 from its artwork, and keeps the wall below it clear for the cable', () => {
+    const c = defaultCompartment();
+    const t = buildCompartment(c, 'indoor');
+    expect(t.parts.filter((p) => p.kind === 'model').map((p) => (p as { model: string }).model)).toEqual(['TSC2000']);
+    // A checker plate square just under the housing would cover the cable and gland.
+    const row = Math.floor((c.control.height - inToMm(2.2) - inToMm(1)) / CHECKER_PLATE.size);
+    const col = Math.floor(c.control.offset / CHECKER_PLATE.size);
+    expect(squareBlocker(c, { wall: c.control.wall, col, row })).toMatch(/controller/);
   });
 });

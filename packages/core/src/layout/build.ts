@@ -109,6 +109,17 @@ export interface SlabPart extends Base {
 }
 
 /**
+ * A product built from its artwork (SVG shapes + photo) by the viewer.
+ * `center` is on the outside face of the wall at the product's centre.
+ */
+export interface ModelPart extends Base {
+  kind: 'model';
+  model: string;
+  center: Vec3;
+  rotationY: number;
+}
+
+/**
  * Aluminum ramp outside a door. `origin` is on the ground at the outside face
  * of the wall, at the ramp's left edge (seen from outside); the ramp runs
  * `width` along the wall and `length` away from it, rising to `height` at the wall.
@@ -145,7 +156,7 @@ export interface WallPart extends Base {
   thickness: number;
 }
 
-export type Part = BoxPart | CylinderPart | SlabPart | WallPart | RampPart;
+export type Part = BoxPart | CylinderPart | SlabPart | WallPart | RampPart | ModelPart;
 
 export interface Dimension {
   a: Vec3;
@@ -789,13 +800,9 @@ function controlParts(c: Compartment, def: NonNullable<ReturnType<typeof getCont
   const H = def.height;
   const D = def.depth;
   const out: Part[] = [];
-  if (def.id === 'TSC2000') {
-    out.push({ kind: 'control-body', id: id('ring'), center: at(0, 0, T + D * 0.35), size: [W, H, D * 0.7], rotationY: rot, color: '#3bb6c6', label });
-    out.push({ kind: 'control-body', id: id('body'), center: at(0, 0, T + D * 0.55), size: [W - 10, H - 10, D * 0.9], rotationY: rot, color: '#16181b', label });
-    out.push({ kind: 'screen', id: id('face'), center: at(0, 0, T + D + 0.5), size: [W - 18, H - 18, 1], rotationY: rot, screen: 'TSC2000', label });
-    // Cable and gland underneath
-    out.push({ kind: 'cable', id: id('cable'), center: at(0, -H / 2 - 32, T + 14), radius: 4, height: 64, label });
-    out.push({ kind: 'cable', id: id('gland'), center: at(0, -H / 2 - 70, T + 14), radius: 11, height: 16, label });
+  if (def.artwork) {
+    // Modelled from the product artwork in the viewer: housing, glass face, boot, cable and gland.
+    out.push({ kind: 'model', id: id('model'), model: def.id, center: at(0, 0, T), rotationY: rot, label });
   } else {
     out.push({ kind: 'control-body', id: id('bezel'), center: at(0, 0, T + D / 2), size: [W, H, D], rotationY: rot, color: '#2b2e33', label });
     out.push({ kind: 'screen', id: id('face'), center: at(0, 0, T + D + 0.5), size: [W - 8, H - 8, 1], rotationY: rot, screen: 'TC1000', label });

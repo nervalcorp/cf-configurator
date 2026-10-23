@@ -74,7 +74,7 @@ The roll-up opening runs the full 120" panel height; its drum housing sits above
 
 ## Compartments
 
-A configuration holds one or more compartments ("Compartment 1", "Compartment 2"…; rename them on the Layout step). Each keeps its own shape, size, finish, floor, doors, glass doors, controller and accessories; the site type (indoor or outdoor) is shared. The bar over the 3D view switches between them and has **Add Compartment** and **Duplicate**. New and duplicated compartments are placed touching the right-hand side of the site, fronts in line; on the Layout step a compartment can be placed touching any side of another, or nudged in 6" steps. A position is the centre of the compartment's footprint, so resizing grows both ways. Overlapping compartments are flagged on both. Names are unique: the name field refuses one that is taken, and loaded files with repeated names get a number. With more than one compartment, the one being edited glows teal on the floor. The floor plan shows the compartment being edited.
+A configuration holds one or more compartments ("Compartment 1", "Compartment 2"…; rename them on the Layout step). Each keeps its own shape, size, finish, floor, doors, glass doors, controller and accessories; the site type (indoor or outdoor) is shared. The bar over the 3D view switches between them and has **Add Compartment** and **Duplicate**. New and duplicated compartments are placed touching the right-hand side of the site, fronts in line; on the Layout step a compartment can be placed touching any side of another, or nudged in 6" steps. Alone, a compartment grows from its centre when resized; with others on the site it grows away from its nearest neighbour on each axis (the edge facing the neighbour stays put). Overlapping compartments are flagged on both. Names are unique: the name field refuses one that is taken, and loaded files with repeated names get a number. With more than one compartment, the one being edited glows teal on the floor. The floor plan shows the compartment being edited.
 
 ## Floors and ramps
 
@@ -84,7 +84,7 @@ Floor is chosen on the Layout step: Standard, DuraFloor, Recessed (a concrete sl
 
 ICC-ACC-SHELVING-HD heavy duty shelving goes inside a compartment from the Accessories step. A unit is a run of bays, one per door opening, each with 30" × 27" wire shelves (5 by default, heights adjustable by setting the lowest and highest shelf). It is built from the product sheet's parts: perforated black posts with foot plates and post retainer brackets, wire shelves (a flat panel with a see-through mesh texture), clear price tag strips, diagonal side braces and stabilizer bars along the top. Any shelf can take a gravity flow tray, which tips the shelf toward the front and adds a dark bed, wire lane dividers and a front stop.
 
-**Add shelving** puts a unit behind the nearest glass door unit that has none yet: one bay per glass door, facing the glass, 3" back from the wall, with shelves inside the door opening. Without glass doors it goes against the back wall. Drag units on the floor plan (the teal edge is the front), nudge them 1" at a time, or turn them 90°. A unit that leaves the compartment or overlaps another is flagged. The part list counts one ICC-ACC-SHELVING-HD per bay and gravity trays separately.
+**Add shelving** puts a unit behind the nearest glass door unit that has none yet: one bay per glass door, facing the glass, 3" back from the wall, with shelves inside the door opening. Without glass doors it goes against the back wall. Drag units on the floor plan (the teal edge is the front), nudge them 1" at a time, or turn them 90°. A unit that leaves the compartment or overlaps another is flagged. Shelving is sold on its own by quantity, one ICC-ACC-SHELVING-HD per bay, with or without glass doors; gravity flow trays are ICC-GRAVITY-SHELF.
 
 ## Glass display doors
 
@@ -104,9 +104,13 @@ Glass units of the same height and lift may touch side by side with no gap and a
 
 Aluminum checker plate is placed by the square foot: 1' × 1' squares on a 1-ft grid per wall, counted from the left end of the wall's inside run and from the floor. The tread texture is mapped in wall coordinates, so neighbouring squares form one seamless sheet. Paint squares on the wall elevation on the Accessories step, or use "Fill below with checker plate" on a raised glass unit. Squares can't cover a door opening or the controller; if a door is later moved over one, it is flagged.
 
+## Products built from artwork
+
+Some products are modelled from artwork John supplies: one SVG with the product photo as an `<image>` and a vector shape over each part, in the same coordinates. `apps/web/src/viewer/productModels.ts` reads it with three.js's SVGLoader, turns each shape into 3D by its role (extruded housing, raised glass face, tapered boot, cable, hex gland…) and projects the photo onto every part from the SVG's x/y, so the model's face is the photo. Shapes are matched by `id` when they have one (`id="housing"`), otherwise by order. Add a product by dropping its SVG in `apps/web/src/assets/products/` and adding a recipe (roles, real width, depths). The ICC-TSC2000 Smart Control is the first.
+
 ## Controller
 
-One per compartment, on the Refrigeration step. ICC-TSC2000 Smart Control (4½" × 4" × 1", Wi-Fi and app) or ICC-TC1000 Temperature Controller (about 4¼" × 2" × ½", estimated). It starts beside the first door on its latch side, 4" clear of the hardware, centred at 5' 0" (eye level), and can move to any wall, left or right, and between 3' 4" and 5' 6" high. It is flagged when it sits over or within ½" of a door opening.
+One per compartment, on the Refrigeration step. ICC-TSC2000 Smart Control (4½" wide, 1" deep, about 4¼" tall at the artwork's proportions; Wi-Fi and app), modelled from its artwork, or ICC-TC1000 Temperature Controller (about 4¼" × 2" × ½", estimated). It starts beside the first door on its latch side, 4" clear of the hardware, centred at 5' 0" (eye level), and can move to any wall, left or right, and between 3' 4" and 5' 6" high. It is flagged when it sits over or within ½" of a door opening.
 
 ## Finishes
 

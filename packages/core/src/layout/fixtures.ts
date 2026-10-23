@@ -79,7 +79,7 @@ export function controlRect(c: Compartment): (Opening & { wall: number }) | null
   const def = getControl(c.control.model);
   if (!def) return null;
   const { offset, height, wall } = c.control;
-  return { wall, from: offset - def.width / 2, to: offset + def.width / 2, bottom: height - def.height / 2, top: height + def.height / 2 };
+  return { wall, from: offset - def.width / 2, to: offset + def.width / 2, bottom: height - def.height / 2 - (def.tail ?? 0), top: height + def.height / 2 };
 }
 
 /**

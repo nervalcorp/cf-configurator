@@ -131,3 +131,40 @@ export function overlappingCompartments(cfg: Configuration): [string, string][] 
   }
   return out;
 }
+
+/**
+ * Where a resized compartment should sit. With other compartments on the site
+ * it grows away from its nearest neighbour on each axis: the edge facing that
+ * neighbour stays put. Alone (or with nobody in line on an axis) it grows from
+ * its centre.
+ */
+export function resizedPosition(cfg: Configuration, before: Compartment, after: Compartment): { x: number; z: number } {
+  let { x, z } = after.position;
+  const others = cfg.compartments.filter((o) => o.id !== before.id);
+  if (!others.length) return { x, z };
+  const ext = (c: Compartment) => ({
+    left: c.position.x - c.boxW / 2,
+    right: c.position.x + c.boxW / 2,
+    back: c.position.z - c.boxD / 2,
+    front: c.position.z + c.boxD / 2,
+  });
+  const me = ext(before);
+  if (Math.abs(after.boxW - before.boxW) > 0.01) {
+    // Neighbours in line along x: their depth range overlaps ours.
+    const inLine = others.map(ext).filter((o) => o.back < me.front - 1 && me.back < o.front - 1);
+    const gapRight = Math.min(...inLine.filter((o) => o.left >= me.right - 1).map((o) => o.left - me.right), Infinity);
+    const gapLeft = Math.min(...inLine.filter((o) => o.right <= me.left + 1).map((o) => me.left - o.right), Infinity);
+    if (gapRight < Infinity || gapLeft < Infinity) {
+      x = gapRight <= gapLeft ? me.right - after.boxW / 2 : me.left + after.boxW / 2;
+    }
+  }
+  if (Math.abs(after.boxD - before.boxD) > 0.01) {
+    const inLine = others.map(ext).filter((o) => o.left < me.right - 1 && me.left < o.right - 1);
+    const gapFront = Math.min(...inLine.filter((o) => o.back >= me.front - 1).map((o) => o.back - me.front), Infinity);
+    const gapBack = Math.min(...inLine.filter((o) => o.front <= me.back + 1).map((o) => me.back - o.front), Infinity);
+    if (gapFront < Infinity || gapBack < Infinity) {
+      z = gapFront <= gapBack ? me.front - after.boxD / 2 : me.back + after.boxD / 2;
+    }
+  }
+  return { x, z };
+}

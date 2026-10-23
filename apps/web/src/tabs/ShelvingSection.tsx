@@ -31,7 +31,7 @@ export function ShelvingSection({ c }: { c: Compartment }) {
     <>
       <Section title="Shelving" hint={SHELVING.sku}>
         <p className="panel-note first">
-          Heavy duty black wire shelving, one bay per door opening, 30" × 27" shelves. {hasGlass ? 'New shelving goes behind the nearest glass doors.' : 'New shelving goes against the back wall.'}
+          Heavy duty black wire shelving, sold by the bay (30" × 27" shelves, 5 per bay), with or without glass doors. {hasGlass ? 'New shelving goes behind the nearest glass doors.' : 'New shelving goes against the back wall.'} Gravity flow trays are {SHELVING.gravitySku}.
         </p>
         {units.length > 0 && (
           <ul className="door-list">

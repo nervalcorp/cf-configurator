@@ -18,6 +18,7 @@ import {
   duplicateCompartment,
   normalize,
   removeCompartment,
+  resizedPosition,
 } from '@wic/core';
 
 export const TABS: { id: TabId; label: string }[] = [
@@ -99,7 +100,16 @@ export const useStore = create<State>((set, get) => {
     editCompartment: (fn, opts) => {
       const { config, ui } = get();
       apply(
-        { ...config, compartments: config.compartments.map((c) => (c.id === ui.active ? fn(c) : c)) },
+        {
+          ...config,
+          compartments: config.compartments.map((c) => {
+            if (c.id !== ui.active) return c;
+            const next = fn(c);
+            // With neighbours on the site, grow away from them instead of from the centre.
+            if (next.boxW !== c.boxW || next.boxD !== c.boxD) return { ...next, position: resizedPosition(config, c, next) };
+            return next;
+          }),
+        },
         !!opts?.transient,
       );
     },

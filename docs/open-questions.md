@@ -8,20 +8,19 @@
 
 ## Shelving
 
-- **Gravity flow tray model number.** Not on the Heavy Duty Shelving page; counted separately in the part list.
-- **Quantity basis.** ICC-ACC-SHELVING-HD is counted once per bay (door opening, 5 shelves). Is that how it is sold?
 - **Post height.** Defaults to 7' 0" (or the wall height if lower). Should posts run to the ceiling with the retainer brackets fixed to it?
 
-## Hardware from your SVGs (parked)
+## Products from artwork
 
-- John will send flat vector shapes for hinges, knobs, pull handles, latches and similar hardware. Use them to build those 3D parts, and count them as accessories in the part list.
+- **TSC2000 height.** At 4.5" wide the artwork's proportions make the housing about 4¼" tall; the spec says 4". Kept the artwork's shape.
+- **Ids in future artwork.** Naming the shapes (`id="housing"`, `"boot"`, `"cable"`, `"gland"`, or `"hinge"`, `"handle"`…) lets recipes match parts by name instead of order.
+- **Next:** hinges, knobs, pull handles, latches and similar hardware from John's SVGs, counted as accessories in the part list.
 
 ## Compartments and ramps
 
 - **Interior ramp.** Withdrawn for now; saved drafts with it become the exterior ramp. Will it come back?
 - **Which doors get a ramp.** Man doors and single traffic doors (within 2" of the ramp's 34" width). Pallet, sliding, roll-up and double traffic doors get none. Is a wider ramp coming?
 - **Docking compartments.** Compartments can touch but each keeps its own walls. Sharing a wall, and a pass-through door between compartments, are not done yet.
-- **Resizing next to a neighbour.** A compartment grows from its centre, so making one wider can push it into the next and flag both. Should it grow away from its neighbours instead?
 
 ## Glass doors
 
@@ -47,6 +46,10 @@
 - **Footer logo.** The ICC logo is only on door badges and decals so far. Put it in the footer too?
 
 ## Resolved
+
+- **Gravity flow tray model** (2026-10-24). ICC-GRAVITY-SHELF.
+- **Shelving quantity** (2026-10-24). Sold on its own by quantity, one per bay, with or without glass doors.
+- **Resizing next to a neighbour** (2026-10-24). Grows away from the nearest neighbour; from the centre when alone.
 
 - **Mobile framing** (2026-10-23). The camera pulls back on narrow screens so the whole site fits.
 - **Camera on site type change** (2026-10-23). Switching indoor/outdoor no longer moves the view.

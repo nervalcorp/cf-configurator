@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { BoxPart, ComponentTree, Dimension, Face, Part, RampPart, SlabPart, WallPart } from '@wic/core';
 import type { Materials, Skin } from './materials';
+import { productModel } from './productModels';
 
 export interface Built {
   root: THREE.Group;
@@ -27,6 +28,29 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
   const pickable: THREE.Mesh[] = [];
 
   for (const part of tree.parts) {
+    if (part.kind === 'model') {
+      // Product built from artwork: every mesh in it is pickable and can be flagged.
+      const obj = productModel(part.model);
+      if (!obj) continue;
+      obj.position.set(...part.center);
+      obj.rotation.y = part.rotationY;
+      const problems = flags.get(part.id);
+      obj.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        o.userData.label = part.label;
+        o.userData.partId = part.id;
+        o.userData.problems = problems;
+        pickable.push(o);
+        if (problems) {
+          const overlay = new THREE.Mesh(o.geometry, mats.flag);
+          overlay.userData.overlay = true;
+          overlay.renderOrder = 2;
+          o.add(overlay);
+        }
+      });
+      root.add(obj);
+      continue;
+    }
     const mesh = partMesh(part, mats, skin);
     if (!mesh) continue;
     mesh.castShadow = part.kind !== 'roof';
@@ -67,6 +91,8 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
       return wallMesh(part, mats, skin);
     case 'ramp':
       return rampMesh(part, mats);
+    case 'model':
+      return null; // built from artwork in buildMeshes
     case 'badge': {
       if (!part.logo) return boxMesh(part, tinted(mats.threshold, part.color ?? '#1f2a33'));
       const slots: THREE.Material[] = Array(6).fill(mats.badgeBody);
@@ -329,7 +355,7 @@ function labelSprite(text: string) {
 
 export function disposeTree(obj: THREE.Object3D, keep: Set<THREE.Material>) {
   obj.traverse((o) => {
-    if (o.userData.overlay) return; // shares its geometry with the parent
+    if (o.userData.overlay || o.userData.shared) return; // shares geometry with a parent or a cached product model
     const anyO = o as THREE.Mesh;
     anyO.geometry?.dispose();
     const m = anyO.material as THREE.Material | THREE.Material[] | undefined;

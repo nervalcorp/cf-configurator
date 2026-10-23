@@ -22,7 +22,7 @@ const DEFAULT_DIR = new THREE.Vector3(28, 22, 36).normalize();
 export class SceneController {
   readonly renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
+  private camera = new THREE.PerspectiveCamera(40, 1, 0.02, 200);
   private controls: OrbitControls;
   private key = new THREE.DirectionalLight(0xffffff, 2.2);
   private mats = new Materials();
@@ -96,7 +96,7 @@ export class SceneController {
 
     this.controls = new OrbitControls(this.camera, r.domElement);
     this.controls.enableDamping = true;
-    this.controls.minDistance = 1.5;
+    this.controls.minDistance = 0.3; // close enough to inspect small accessories
     this.controls.maxDistance = 40;
     this.controls.maxPolarAngle = Math.PI / 2 - 0.02;
     this.controls.autoRotateSpeed = 1.2;

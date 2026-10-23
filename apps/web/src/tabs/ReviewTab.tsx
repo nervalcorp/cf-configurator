@@ -53,7 +53,7 @@ function partsOf(c: Compartment, tree: ComponentTree, into: Map<string, Row>) {
   const bays = c.accessories.shelving.reduce((n, u) => n + u.bays, 0);
   if (bays) add(SHELVING.sku, SHELVING.label, bays);
   const trays = c.accessories.shelving.reduce((n, u) => n + u.gravity.length, 0);
-  if (trays) add('—', SHELVING.gravityLabel, trays);
+  if (trays) add(SHELVING.gravitySku, SHELVING.gravityLabel, trays);
 }
 
 export function ReviewTab() {
