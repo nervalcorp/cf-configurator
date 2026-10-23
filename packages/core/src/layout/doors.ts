@@ -6,7 +6,8 @@
  * doors. Two doors on one wall may not have overlapping intervals.
  */
 import { type Compartment, type Door, LIMITS, newDoor } from '../config';
-import { type DoorFamilyId, doorSize, getDoorFamily } from '../catalog';
+import { type DoorFamilyId, doorMount, doorSize, getDoorFamily } from '../catalog';
+import { inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, wallFrames } from './walls';
 
@@ -46,7 +47,55 @@ export function offsetRange(d: Door, wallLength: number): [number, number] {
   return [-s.from, wallLength - s.to];
 }
 
-const overlaps = (a: DoorSpan, b: DoorSpan) => a.from < b.to + LIMITS.doorGap && b.from < a.to + LIMITS.doorGap;
+/**
+ * Glass units of the same height and lift can sit side by side with their
+ * frames touching. Anything else keeps its side clearance plus the door gap.
+ */
+export function canTouch(a: Door, b: Door): boolean {
+  if (a.family !== 'glass' || b.family !== 'glass') return false;
+  const ha = doorSize(a).height;
+  const hb = doorSize(b).height;
+  return Math.abs(ha - hb) < 0.5 && Math.abs(a.elevation - b.elevation) < 0.5;
+}
+
+/** True when two doors on the same wall are too close (or overlap). */
+export function doorsClash(a: Door, b: Door, aOffset = a.offset, bOffset = b.offset): boolean {
+  if (canTouch(a, b)) {
+    const wa = doorSize(a).width;
+    const wb = doorSize(b).width;
+    return aOffset < bOffset + wb - 0.5 && bOffset < aOffset + wa - 0.5;
+  }
+  const sa = doorSpan(a, aOffset);
+  const sb = doorSpan(b, bOffset);
+  return sa.from < sb.to + LIMITS.doorGap && sb.from < sa.to + LIMITS.doorGap;
+}
+
+/**
+ * The hole a door needs in its wall, along the wall's inside run and up from
+ * the floor. Frames, gaskets and guides are included.
+ */
+export function doorOpening(d: Door, wallH: number): { from: number; to: number; bottom: number; top: number } {
+  const fam = getDoorFamily(d.family);
+  const F = LIMITS.doorFrame;
+  const { width, height } = doorSize(d);
+  const x0 = d.offset;
+  const x1 = d.offset + width;
+  const mount = doorMount(d);
+  if (mount === 'semi-buried') {
+    return { from: x0 + SEMI_OVERLAP - SEMI_FRAME, to: x1 - SEMI_OVERLAP + SEMI_FRAME, bottom: 0, top: height - SEMI_OVERLAP + SEMI_FRAME };
+  }
+  if (mount === 'full-buried') return { from: x0 - GASKET - F, to: x1 + GASKET + F, bottom: 0, top: height + GASKET + F };
+  if (fam.kind === 'rollup') return { from: x0 - F, to: x1 + F, bottom: 0, top: Math.min(height, wallH) };
+  if (fam.kind === 'glass') return { from: x0, to: x1, bottom: d.elevation, top: d.elevation + height };
+  return { from: x0 - F, to: x1 + F, bottom: 0, top: height + F };
+}
+
+/** Semi-buried doors sit on a 4.75" frame; the leaf laps 1.5" over it, leaving 3.25" showing. */
+export const SEMI_FRAME = inToMm(4.75);
+/** How far a semi-buried leaf laps over its opening (and onto the frame). */
+export const SEMI_OVERLAP = inToMm(1.5);
+/** Gasket line between a full-buried leaf and its frame. */
+export const GASKET = 8;
 
 /**
  * First offset (scanning left to right in 1" steps) where the door fits on the
@@ -57,11 +106,8 @@ export function findFreeOffset(c: Compartment, door: Door, wall: number, near?: 
   if (!frame) return null;
   const [lo, hi] = offsetRange(door, frame.length);
   if (hi < lo) return null;
-  const others = c.doors.filter((o) => o.id !== door.id && o.wall === wall).map((o) => doorSpan(o));
-  const free = (off: number) => {
-    const s = doorSpan(door, off);
-    return others.every((o) => !overlaps(s, o));
-  };
+  const others = c.doors.filter((o) => o.id !== door.id && o.wall === wall);
+  const free = (off: number) => others.every((o) => !doorsClash(door, o, off));
   // Whole-inch positions only, so offsets read cleanly in the panel.
   const step = 25.4;
   const candidates: number[] = [];
@@ -130,6 +176,29 @@ export function setShape(c: Compartment, shape: Compartment['shape'], nw: number
     next = updateDoor(placed.compartment, placed.id, { ...d, wall: seat.wall, offset: seat.offset });
   }
   return next;
+}
+
+/**
+ * Slide a door toward `target` along its wall, stopping where it would clash
+ * with another door or leave the wall. Used while dragging, so doors never
+ * pass through each other: they stop where they touch.
+ */
+export function slideDoor(c: Compartment, id: string, target: number): Compartment {
+  const d = c.doors.find((x) => x.id === id);
+  const f = d && framesFor(c)[d.wall];
+  if (!d || !f) return c;
+  const [lo, hi] = offsetRange(d, f.length);
+  const goal = Math.min(hi, Math.max(lo, Math.round(target / 25.4) * 25.4));
+  const others = c.doors.filter((o) => o.id !== id && o.wall === d.wall);
+  const step = goal > d.offset ? 25.4 : -25.4;
+  let at = d.offset;
+  // Walk an inch at a time from where the door is; stop before the first clash.
+  for (let next = at + step; step > 0 ? next <= goal + 0.01 : next >= goal - 0.01; next += step) {
+    if (others.some((o) => doorsClash(d, o, next))) break;
+    at = next;
+  }
+  if (Math.abs(goal - at) < 25.4 && !others.some((o) => doorsClash(d, o, goal))) at = goal;
+  return at === d.offset ? c : updateDoor(c, id, { offset: at });
 }
 
 /** True when every wall is still long enough for the doors on it, side by side. */

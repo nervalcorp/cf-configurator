@@ -8,11 +8,20 @@
 
 ## Glass doors
 
-- **Hinge pattern.** Read off the photos: 2-door units open from the centre, 3-door units hinge left, right, right. The pages say "Opening: Right Hand". Confirm.
 - **Mounting height.** Units sit on the floor (frame bottom at floor level). Are they raised on a curb or base in practice?
 - **LED lights and heaters** are listed on every series but not drawn; lights inside the unit can come with the Accessories step.
 - **Custom sizes** are available per the pages but not offered in the configurator yet.
 - **Old glass door models** (ICC-GDC/GDF, ICC-GD-ASD/ASS) are not offered; the catalog marks them as pending removal.
+
+## Checker plates
+
+- **What to quote.** The ICC page lists no product ID. Plates are counted in square feet; the catalog also has 48" × 96" sheets (ICC-4896-3AL / -5AL, 32 sq ft each). Should the part list convert squares into sheets?
+
+## Controller
+
+- **TC1000 model number.** The page's variant button reads ICC-TSC1000, the model line reads ICC-TC1000. The configurator uses ICC-TC1000.
+- **TC1000 size.** Estimated at 4¼" × 2" × ½" from the photo.
+- **Over 5 HP.** The TSC2000 needs the ICC Control Box above 5 HP. Once condensing units are chosen, the configurator can add the Control Box or flag it.
 
 ## Finishes
 
@@ -21,6 +30,9 @@
 - **Footer logo.** The ICC logo is only on door badges and decals so far. Put it in the footer too?
 
 ## Resolved
+
+- **Glass hinge pattern** (2026-10-23). The white squares on the frame are the hinges; 2-door from the centre, 3-door left, right, right.
+- **Semi-buried frame** (2026-10-23). 4.75" wide, hinges and strike mounted in the middle of the exposed frame.
 
 - **Default finish** (2026-10-23). Logo decals on a white background, 12" tiles.
 - **Man door leaf size** (2026-10-23). Semi- and full-buried leaves were different (37" × 79.5" vs 33.4" × 77.7"); both are now exactly 34" × 78".

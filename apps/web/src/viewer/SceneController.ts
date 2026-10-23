@@ -7,7 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ComponentTree, Compartment, ExteriorFinish } from '@wic/core';
 import { activeBrand } from '../theme/brands';
 import { Materials } from './materials';
-import { badgeTexture, decalTexture, loadImage, svgDataUrl, transparentLogoTexture, whiteLogo } from './textures';
+import { badgeTexture, checkerTexture, decalTexture, loadImage, svgDataUrl, tc1000Face, transparentLogoTexture, tsc2000Face, whiteLogo } from './textures';
 import { type Built, buildMeshes, disposeTree } from './buildMeshes';
 
 const MM = 0.001;
@@ -87,6 +87,8 @@ export class SceneController {
     this.scene.add(grid);
 
     this.model.scale.setScalar(MM);
+    this.mats.checker.map = checkerTexture();
+    this.paintScreens(null);
     this.scene.add(this.model);
 
     this.controls = new OrbitControls(this.camera, r.domElement);
@@ -139,6 +141,7 @@ export class SceneController {
           if (this.badgeKey !== logo) return;
           this.mats.logoWhite.map?.dispose();
           this.mats.setGlassLogo(transparentLogoTexture(img));
+          this.paintScreens(img);
         })
         .catch(() => this.mats.setGlassLogo(null));
     }
@@ -149,6 +152,18 @@ export class SceneController {
         this.mats.setBadge(badgeTexture(img));
       })
       .catch(() => this.mats.setBadge(null));
+  }
+
+  /** Draw the controller faces, with the white logo once it has loaded. */
+  private paintScreens(logo: HTMLImageElement | null) {
+    for (const [mat, face] of [
+      [this.mats.screenTSC, tsc2000Face],
+      [this.mats.screenTC, tc1000Face],
+    ] as const) {
+      mat.map?.dispose();
+      mat.map = face(logo);
+      mat.needsUpdate = true;
+    }
   }
 
   /** Default decal image when the configuration has no upload. */
@@ -236,6 +251,9 @@ export class SceneController {
     this.decalTex?.dispose();
     this.mats.badgeFace.map?.dispose();
     this.mats.logoWhite.map?.dispose();
+    this.mats.checker.map?.dispose();
+    this.mats.screenTSC.map?.dispose();
+    this.mats.screenTC.map?.dispose();
     this.mats.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

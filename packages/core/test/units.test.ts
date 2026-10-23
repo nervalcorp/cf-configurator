@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatFeetInches, formatInches, inToMm, mmToIn, snapToStep } from '../src';
+import { formatFeetInches, formatInches, formatInchesFine, inToMm, mmToIn, snapToStep } from '../src';
 
 describe('units', () => {
   it('round-trips inches through mm', () => {
@@ -12,6 +12,11 @@ describe('units', () => {
   });
   it('formats whole inches', () => {
     expect(formatInches(inToMm(34))).toBe('34"');
+  });
+  it('formats product sizes to the quarter inch', () => {
+    expect(formatInchesFine(inToMm(4.5))).toBe('4½"');
+    expect(formatInchesFine(inToMm(4))).toBe('4"');
+    expect(formatInchesFine(inToMm(0.5))).toBe('½"');
   });
   it('snaps to a 6" grid', () => {
     expect(mmToIn(snapToStep(inToMm(152), 6))).toBe(150);

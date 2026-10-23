@@ -54,7 +54,7 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, flags: Map<str
   return { root, dims, pickable };
 }
 
-const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide', 'glass']);
+const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide', 'glass', 'plate']);
 
 function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
   switch (part.kind) {
@@ -100,10 +100,21 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
       return boxMesh(part, part.color ? tinted(mats.track, part.color) : mats.track);
     case 'curtain':
       return boxMesh(part, part.color ? tinted(mats.curtain, part.color) : mats.curtain);
-    case 'hinge-pin': {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.height, 12), mats.chrome);
+    case 'hinge-pin':
+    case 'cable': {
+      const seg = part.kind === 'cable' && part.radius > 8 ? 6 : 12; // the gland is a hex nut
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.height, seg), part.kind === 'cable' ? mats.cable : mats.chrome);
       m.position.set(...part.center);
       return m;
+    }
+    case 'plate':
+      return plateMesh(part, mats);
+    case 'control-body':
+      return boxMesh(part, tinted(mats.badgeBody, part.color ?? '#16181b'));
+    case 'screen': {
+      const slots: THREE.Material[] = Array(6).fill(mats.cable);
+      slots[4] = part.screen === 'TC1000' ? mats.screenTC : mats.screenTSC;
+      return boxMesh(part, slots);
     }
     case 'floor':
     case 'roof':
@@ -142,8 +153,9 @@ function slabMesh(p: SlabPart, mat: THREE.Material) {
  * gets the exterior finish. One geometry per outline keeps the groups simple.
  */
 function wallMesh(p: WallPart, mats: Materials) {
-  const geos = p.profiles.map((outline) => {
+  const geos = p.profiles.map(({ outline, holes }) => {
     const shape = new THREE.Shape(outline.map(([x, y]) => new THREE.Vector2(x, y)));
+    for (const h of holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
     const geo = new THREE.ExtrudeGeometry(shape, { depth: p.thickness, bevelEnabled: false });
     const caps = geo.groups.find((g) => g.materialIndex === 0);
     const sides = geo.groups.find((g) => g.materialIndex === 1);
@@ -160,6 +172,27 @@ function wallMesh(p: WallPart, mats: Materials) {
   const m = new THREE.Mesh(geo, [mats.interior, mats.exterior]);
   m.position.set(...p.origin);
   m.rotation.y = p.rotationY;
+  return m;
+}
+
+/**
+ * A checker plate square. Its outside face gets UVs in feet of wall, so the
+ * one-foot tread texture continues from square to square.
+ */
+function plateMesh(p: BoxPart, mats: Materials) {
+  const geo = new THREE.BoxGeometry(...p.size);
+  const [u0, v0, u1, v1] = p.wallRect ?? [0, 0, 304.8, 304.8];
+  const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+  // Face 4 (+Z, the outside) owns vertices 16-19.
+  for (let i = 16; i < 20; i++) {
+    uv.setXY(i, (u0 + uv.getX(i) * (u1 - u0)) / 304.8, (v0 + uv.getY(i) * (v1 - v0)) / 304.8);
+  }
+  uv.needsUpdate = true;
+  const slots: THREE.Material[] = Array(6).fill(mats.track);
+  slots[4] = mats.checker;
+  const m = new THREE.Mesh(geo, slots);
+  m.position.set(...p.center);
+  m.rotation.y = p.rotationY ?? 0;
   return m;
 }
 

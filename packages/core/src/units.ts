@@ -26,3 +26,11 @@ export function formatFeetInches(mm: number): string {
 export function formatInches(mm: number): string {
   return `${Math.round(mmToIn(mm))}"`;
 }
+
+/** 114.3 mm → `4½"`: nearest quarter inch, for product sizes. */
+export function formatInchesFine(mm: number): string {
+  const q = Math.round(mmToIn(mm) * 4);
+  const whole = Math.floor(q / 4);
+  const frac = ['', '¼', '½', '¾'][q % 4];
+  return `${whole || !frac ? whole : ''}${frac}"`;
+}

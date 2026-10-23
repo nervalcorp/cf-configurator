@@ -206,6 +206,11 @@ canvas { display: block; }
 .btn-link { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 12.5px; cursor: pointer; padding: 0; margin-top: 12px; }
 .btn-link:hover { text-decoration: underline; }
 
+/* checker painter, controller */
+.wall-painter { width: 100%; height: auto; margin-top: 10px; border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--fp-bg); cursor: cell; touch-action: none; }
+.feature-list { margin: 10px 0 0 18px; font-size: 12.5px; line-height: 1.55; color: var(--text-mid); }
+.feature-list li { margin-bottom: 3px; }
+
 /* doors */
 .door-list { list-style: none; display: grid; gap: 6px; margin-bottom: 12px; }
 .door-item {

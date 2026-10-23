@@ -6,16 +6,22 @@
  */
 import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
-import { doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from './catalog';
+import { CONTROL_HEIGHT, GLASS_MAX_ELEVATION, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
+import { controlBlocked, defaultControlPlacement, squareBlocker } from './layout/fixtures';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
-import { doorMinRun, doorSpan, offsetRange } from './layout/doors';
+import { doorMinRun, doorsClash, offsetRange } from './layout/doors';
 import { formatFeetInches, formatInches } from './units';
 
 export type TabId = 'layout' | 'finishes' | 'doors' | 'glass' | 'refrigeration' | 'accessories' | 'review';
 
 /** What an issue is about, so the 3D view can mark it. */
-export type IssueTarget = { type: 'door'; id: string } | { type: 'wall'; edge: number } | { type: 'floor' };
+export type IssueTarget =
+  | { type: 'door'; id: string }
+  | { type: 'wall'; edge: number }
+  | { type: 'floor' }
+  /** Any part by id prefix, e.g. one checker square or the controller. */
+  | { type: 'part'; id: string };
 
 export interface Issue {
   compartmentId: string;
@@ -41,6 +47,11 @@ function normalizeDoor(d: Door, c: Compartment, front: number, wallLengths: numb
     closer: f.kind === 'swing' ? d.closer : false,
     swing: f.kind === 'swing' ? d.swing : 'out',
     handle: f.kind === 'swing' || f.kind === 'slide' ? d.handle : 'included',
+    // Only glass units can be raised; never above 3 ft, and never past the top of the wall.
+    elevation:
+      f.kind === 'glass'
+        ? clamp(d.elevation, 0, Math.max(0, Math.min(GLASS_MAX_ELEVATION, c.height - doorSize(d).height - f.headroom)))
+        : 0,
     glass: {
       ...d.glass,
       // Select is glossy black only.
@@ -78,7 +89,21 @@ export function normalizeCompartment(c: Compartment): Compartment {
   const fp = footprint(base.shape, base.boxW, base.boxD, base.notchW, base.notchD);
   const lengths = wallFrames(fp, base.wallThickness).map((w) => w.length);
   const front = findFrontEdge(fp);
-  return { ...base, doors: base.doors.map((d) => normalizeDoor(d, base, front, lengths)) };
+  const withDoors = { ...base, doors: base.doors.map((d) => normalizeDoor(d, base, front, lengths)) };
+  return { ...withDoors, control: normalizeControl(withDoors, lengths) };
+}
+
+function normalizeControl(c: Compartment, lengths: number[]): Compartment['control'] {
+  const def = getControl(c.control.model);
+  const ctl = c.control;
+  if (ctl.wall < 0 || ctl.wall >= lengths.length) return defaultControlPlacement(c);
+  if (!def) return ctl;
+  const half = def.width / 2;
+  return {
+    ...ctl,
+    offset: clamp(ctl.offset, half, Math.max(half, lengths[ctl.wall] - half)),
+    height: clamp(ctl.height, CONTROL_HEIGHT.min, CONTROL_HEIGHT.max),
+  };
 }
 
 export function normalize(config: Configuration): Configuration {
@@ -132,20 +157,43 @@ export function validateCompartment(c: Compartment): Issue[] {
     } else if (d.offset < lo - 0.01 || d.offset > hi + 0.01) {
       err(tab, `${name} runs past the end of wall ${wall.letter}.`, d.id);
     }
-    const mine = doorSpan(d);
     c.doors.slice(k + 1).forEach((o) => {
       if (o.wall !== d.wall) return;
-      const s = doorSpan(o);
-      if (mine.from < s.to + LIMITS.doorGap && s.from < mine.to + LIMITS.doorGap) {
+      if (doorsClash(d, o)) {
         err(
           tab,
-          `${name} and ${nameOf(o)} are too close on wall ${wall.letter}${f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide' ? ' (sliding doors need room to open)' : ''}.`,
+          `${name} and ${nameOf(o)} are too close on wall ${wall.letter}${
+            f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide'
+              ? ' (sliding doors need room to open)'
+              : d.family === 'glass' && o.family === 'glass'
+                ? ' (glass units can only touch when they are the same height and lift)'
+                : ''
+          }.`,
           d.id,
           [{ type: 'door', id: d.id }, { type: 'door', id: o.id }],
         );
       }
     });
   });
+
+  c.accessories.checker.forEach((q) => {
+    const why = squareBlocker(c, q);
+    if (why) {
+      err('accessories', `A checker plate square on wall ${frames[q.wall]?.letter ?? '?'} is ${why}. Remove it or move the door.`, undefined, [
+        { type: 'part', id: `${c.id}:plate-${q.wall}-${q.col}-${q.row}` },
+      ]);
+    }
+  });
+
+  const ctl = getControl(c.control.model);
+  if (ctl) {
+    const why = controlBlocked(c);
+    if (why) {
+      err('refrigeration', `The ${ctl.label} (${ctl.sku}) is ${why}. Move it on the Refrigeration step.`, undefined, [{ type: 'part', id: `${c.id}:control` }]);
+    }
+  } else {
+    issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: 'This compartment has no controller.' });
+  }
 
   if (c.temperature === 'freezer' && c.finishes.floor === 'none') {
     err('finishes', 'A freezer needs a floor.', undefined, [{ type: 'floor' }]);

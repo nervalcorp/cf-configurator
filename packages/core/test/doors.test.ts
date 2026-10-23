@@ -92,6 +92,7 @@ describe('door rules', () => {
   it('marks every part of a flagged door, and only that door', () => {
     let c = addDoor({ ...defaultCompartment(), height: inToMm(110), boxW: inToMm(240) }).compartment;
     c = moveDoor(c, 'd2', 1); // second, valid door on another wall
+    c = { ...c, control: { ...c.control, model: 'none' } }; // keep the controller out of this test
     c = updateDoor(c, 'd1', { family: 'rollup', offset: inToMm(4) });
     const tree = buildCompartment(c, 'indoor');
     const flags = flaggedParts(tree, validateCompartment(c));

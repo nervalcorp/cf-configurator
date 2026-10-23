@@ -9,3 +9,4 @@ export * from './layout/build';
 export * from './layout/drag';
 export * from './layout/doors';
 export * from './layout/flags';
+export * from './layout/fixtures';

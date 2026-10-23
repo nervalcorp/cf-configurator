@@ -236,3 +236,66 @@ export function doorTag(doors: readonly { id: string; family: DoorFamilyId }[], 
   const same = doors.filter((x) => (x.family === 'glass') === glass);
   return `${glass ? 'G' : 'D'}${same.indexOf(d) + 1}`;
 }
+
+/** Most a glass display door unit can be raised off the floor. */
+export const GLASS_MAX_ELEVATION = inToMm(36);
+
+/**
+ * Aluminum checker plate, sold and placed by the square foot. Squares sit on a
+ * 1-ft grid per wall, starting at the left end of the wall's inside run and the
+ * floor, so the tread pattern lines up across neighbouring squares.
+ * The ICC page lists no product ID; the catalog also has 48" × 96" sheets
+ * (ICC-4896-3AL / -5AL). CONFIRM which to quote.
+ */
+export const CHECKER_PLATE = { size: inToMm(12), thickness: 3, label: 'Aluminum checker plate, 1\' × 1\'' };
+
+export type ControlModel = 'TSC2000' | 'TC1000' | 'none';
+
+export interface ControlDef {
+  id: Exclude<ControlModel, 'none'>;
+  sku: string;
+  label: string;
+  /** Face size and depth off the wall. */
+  width: number;
+  height: number;
+  depth: number;
+  features: string[];
+}
+
+/** Walk-in controllers, from the ICC Smart Control and Temperature Controller pages. */
+export const CONTROLS: readonly ControlDef[] = [
+  {
+    id: 'TSC2000',
+    sku: 'ICC-TSC2000',
+    label: 'Smart Control',
+    width: inToMm(4.5),
+    height: inToMm(4),
+    depth: inToMm(1),
+    features: [
+      'Wi-Fi, cloud data logging, Android and iOS app',
+      'Dual power: 110V up to 1.5 HP, 220V up to 5 HP, single and three phase',
+      'Over 5 HP works with the ICC Control Box',
+      'Light, defrost, refrigeration, fan, unlock, alarm and auxiliary indicators',
+    ],
+  },
+  {
+    id: 'TC1000',
+    // CONFIRM: the page's variant button reads ICC-TSC1000, the model line reads ICC-TC1000.
+    sku: 'ICC-TC1000',
+    label: 'Temperature Controller',
+    // Estimated from the photo; panel-style controller with a raised bezel.
+    width: inToMm(4.25),
+    height: inToMm(2),
+    depth: inToMm(0.5),
+    features: [
+      'For 120V 50-60Hz commercial refrigerators and freezers',
+      'Manages compressor, fan and defrost independently',
+      'Real-time monitoring',
+    ],
+  },
+];
+
+export const getControl = (id: ControlModel) => CONTROLS.find((c) => c.id === id) ?? null;
+
+/** Where a controller may sit: centre height from the floor. Default is eye level. */
+export const CONTROL_HEIGHT = { min: inToMm(40), max: inToMm(66), default: inToMm(60) };

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { DOOR_CLOSER_SKU, HANDLES, SHAPES, buildCompartment, formatFeetInches, formatInches, validate } from '@wic/core';
+import { CHECKER_PLATE, DOOR_CLOSER_SKU, HANDLES, SHAPES, getControl, buildCompartment, formatFeetInches, formatInches, validate } from '@wic/core';
 import { openConfiguration, saveConfiguration } from '../files';
 import { TABS, useActiveCompartment, useStore } from '../store';
 import { Section } from '../shell/controls';
@@ -34,6 +34,10 @@ export function ReviewTab() {
       if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
       if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
     });
+    const ctl = getControl(c.control.model);
+    if (ctl) add(ctl.sku, ctl.label);
+    const plates = c.accessories.checker.length;
+    if (plates) map.set('checker', { sku: '—', name: `${CHECKER_PLATE.label} (sq ft)`, qty: plates });
     return [...map.values()];
   })();
 
@@ -112,7 +116,7 @@ export function ReviewTab() {
       </Section>
 
       {parts.length > 0 && (
-        <Section title="Doors, glass doors and hardware" hint="ICC models, under audit">
+        <Section title="Products and hardware" hint="ICC models, under audit">
           <table className="part-table">
             <thead>
               <tr>
@@ -123,7 +127,7 @@ export function ReviewTab() {
             </thead>
             <tbody>
               {parts.map((p) => (
-                <tr key={p.sku}>
+                <tr key={p.name + p.sku}>
                   <td>{p.name}</td>
                   <td>{p.sku}</td>
                   <td>{p.qty}</td>

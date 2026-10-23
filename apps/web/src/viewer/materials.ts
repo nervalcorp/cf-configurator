@@ -21,6 +21,13 @@ export class Materials {
   logoWhite = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
   /** Glass display door panes: clear with a cool tint. */
   displayGlass = new THREE.MeshStandardMaterial({ color: 0xaeb7be, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.5 });
+  /** Aluminum checker plate; texture is mapped in wall coordinates. */
+  checker = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.32, metalness: 0.45 });
+  /** Controller faces (glossy black glass). */
+  screenTSC = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, metalness: 0.1 });
+  screenTC = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.05 });
+  /** Controller cable and gland. */
+  cable = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.6 });
   /** Red tint over parts with a problem. */
   flag = new THREE.MeshBasicMaterial({
     color: 0xff1a1a,
@@ -85,7 +92,7 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */

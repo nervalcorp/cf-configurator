@@ -66,7 +66,7 @@ A compartment holds any number of doors, each on any wall. Each door records its
 | Forklift roll-up, custom (96" wide for now) | ICC-DR-96120 | none; coolers with 120" panels only |
 | Traffic, single / double | ICC-DR-3684DS / 7284DS -GR·WH·BK | finish |
 
-Man doors are the same 34" × 78" leaf whichever way they are mounted. Semi-buried doors stand proud of the wall on a heavier frame (3", 20 mm proud) and lap 1.5" over the opening behind; full-buried doors sit flush in a 2" frame with a gasket line around the leaf. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
+Man doors are the same 34" × 78" leaf whichever way they are mounted. Semi-buried doors stand proud of the wall on a 4.75" frame (20 mm proud) and lap 1.5" over the opening behind, leaving 3.25" of frame showing; the hinge bases and latch strike sit in the middle of that strip. Full-buried doors sit flush in a 2" frame with a gasket line around the leaf. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
 
 The roll-up opening runs the full 120" panel height; its drum housing sits above the walls and is not counted against the panel height. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
 
@@ -80,7 +80,17 @@ Glass units live in the same `doors` list (family `glass`) so they share wall pl
 | Elite | 30" × 72" | aluminum | black (BK), anodized (AN) | full length | ICC-GD-ELITE-BK/AN-2D/3D |
 | Signature | 30" × 72" | frameless | black (BK), anodized (SV) | 18" bar | ICC-GD-SIGNATURE-BK/SV-2D/3D |
 
-A unit is its doors plus a 1.5" aluminum outer frame (2-door 63" wide, 3-door 93"). Two-door units open from the centre; three-door units hinge left, right, right, as in the ICC photos. Each has heater rails with hinge pins top and bottom and a white logo on the last door.
+A unit is its doors plus a 1.5" aluminum outer frame (2-door 63" wide, 3-door 93"). Two-door units open from the centre; three-door units hinge left, right, right. The small white squares at the top of the frame are the hinges, as in the ICC photos, so they mark which side each door opens from. Units can be raised up to 3' 0" (and only as far as the wall allows); a raised unit cuts a window in the wall rather than a notch.
+
+Glass units of the same height and lift may touch side by side with no gap and are not flagged. Units of different heights, and glass next to any other door, keep a 4" gap and are flagged if closer. Dragging a door or unit on the plan, or with its slider, stops where it meets a neighbour; nothing passes through anything else.
+
+## Checker plates
+
+Aluminum checker plate is placed by the square foot: 1' × 1' squares on a 1-ft grid per wall, counted from the left end of the wall's inside run and from the floor. The tread texture is mapped in wall coordinates, so neighbouring squares form one seamless sheet. Paint squares on the wall elevation on the Accessories step, or use "Fill below with checker plate" on a raised glass unit. Squares can't cover a door opening or the controller; if a door is later moved over one, it is flagged.
+
+## Controller
+
+One per compartment, on the Refrigeration step. ICC-TSC2000 Smart Control (4½" × 4" × 1", Wi-Fi and app) or ICC-TC1000 Temperature Controller (about 4¼" × 2" × ½", estimated). It starts beside the first door on its latch side, 4" clear of the hardware, centred at 5' 0" (eye level), and can move to any wall, left or right, and between 3' 4" and 5' 6" high. It is flagged when it sits over or within ½" of a door opening.
 
 ## Finishes
 

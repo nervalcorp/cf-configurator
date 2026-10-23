@@ -49,9 +49,9 @@ describe('buildCompartment', () => {
     const t = buildCompartment(comp(), 'indoor');
     const a = t.parts.find((p): p is WallPart => p.kind === 'wall' && p.letter === 'A')!;
     expect(a.profiles).toHaveLength(1);
-    expect(a.profiles[0].length).toBe(8); // rectangle + one notch
+    expect(a.profiles[0].outline.length).toBe(8); // rectangle + one notch
     const b = t.parts.find((p): p is WallPart => p.kind === 'wall' && p.letter === 'B')!;
-    expect(b.profiles[0].length).toBe(4);
+    expect(b.profiles[0].outline.length).toBe(4);
   });
 
   it('turns parts on a side wall to face outward', () => {
@@ -161,8 +161,17 @@ describe('wallProfile', () => {
     expect(p[0]).toEqual([0, 1500]);
   });
   it('splits the wall at a full-height opening', () => {
-    const p = wallProfiles(3000, 2000, [[1000, 2000, 2000], [200, 600, 1500]]);
+    const p = wallProfiles(3000, 2000, [
+      { from: 1000, to: 2000, bottom: 0, top: 2000 },
+      { from: 200, to: 600, bottom: 0, top: 1500 },
+    ]);
     expect(p).toHaveLength(2);
-    expect(p[1]).toEqual([[2000, 0], [3000, 0], [3000, 2000], [2000, 2000]]);
+    expect(p[1].outline).toEqual([[2000, 0], [3000, 0], [3000, 2000], [2000, 2000]]);
+  });
+  it('cuts a raised opening as a hole', () => {
+    const p = wallProfiles(3000, 2000, [{ from: 500, to: 1500, bottom: 400, top: 1800 }]);
+    expect(p).toHaveLength(1);
+    expect(p[0].outline).toHaveLength(4);
+    expect(p[0].holes).toEqual([[[500, 400], [1500, 400], [1500, 1800], [500, 1800]]]);
   });
 });

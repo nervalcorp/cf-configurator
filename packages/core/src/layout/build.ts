@@ -14,11 +14,12 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { DOOR_WINDOW, GLASS_FRAME, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, getControl, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
 import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
+import { GASKET, SEMI_FRAME, SEMI_OVERLAP, doorOpening } from './doors';
 
 export type Vec3 = readonly [number, number, number];
 
@@ -46,7 +47,10 @@ export type BoxKind =
   | 'trim'
   | 'latch'
   | 'glass'
-  | 'logo';
+  | 'logo'
+  | 'plate'
+  | 'control-body'
+  | 'screen';
 
 export type Face = '+x' | '-x' | '+z' | '-z';
 
@@ -64,12 +68,19 @@ export interface BoxPart extends Base {
   logo?: boolean;
   /** For kind 'logo': the logo in white with no background, as printed on glass. */
   logoStyle?: 'white';
+  /**
+   * For kind 'plate': the square's place on its wall in mm [u0, v0, u1, v1], so
+   * the tread pattern can be mapped in wall coordinates and line up across squares.
+   */
+  wallRect?: [number, number, number, number];
+  /** For kind 'screen': which controller face to draw. */
+  screen?: 'TSC2000' | 'TC1000';
   joint?: number;
   doorId?: string;
 }
 
 export interface CylinderPart extends Base {
-  kind: 'hinge-pin';
+  kind: 'hinge-pin' | 'cable';
   center: Vec3;
   radius: number;
   height: number;
@@ -90,11 +101,17 @@ export interface SlabPart extends Base {
  * The w = T cap is the exterior. A full-height opening splits the wall, so a
  * wall can have several outlines.
  */
+export interface WallOutline {
+  outline: Vec2[];
+  /** Openings that don't reach the floor (raised glass units). */
+  holes: Vec2[][];
+}
+
 export interface WallPart extends Base {
   kind: 'wall';
   letter: string;
   edgeIndex: number;
-  profiles: Vec2[][];
+  profiles: WallOutline[];
   origin: Vec3;
   rotationY: number;
   thickness: number;
@@ -149,89 +166,78 @@ export interface ComponentTree {
 /** Gap between touching parts so faces never z-fight. */
 const EP = 0.5;
 
-/** Merge overlapping [a, b, h] openings so the wall profile stays a simple polygon. */
-function mergeOpenings(list: [number, number, number][]): [number, number, number][] {
-  const s = [...list].sort((x, y) => x[0] - y[0]);
-  const out: [number, number, number][] = [];
+export interface Opening {
+  from: number;
+  to: number;
+  bottom: number;
+  top: number;
+}
+
+/** Merge overlapping or touching openings that share a bottom, so outlines stay simple. */
+function mergeOpenings(list: Opening[]): Opening[] {
+  const s = [...list].sort((x, y) => x.from - y.from);
+  const out: Opening[] = [];
   for (const o of s) {
     const last = out[out.length - 1];
-    if (last && o[0] <= last[1]) {
-      last[1] = Math.max(last[1], o[1]);
-      last[2] = Math.max(last[2], o[2]);
-    } else out.push([...o]);
+    if (last && o.from <= last.to + 0.5 && Math.abs(o.bottom - last.bottom) < 0.5) {
+      last.to = Math.max(last.to, o.to);
+      last.top = Math.max(last.top, o.top);
+    } else out.push({ ...o });
   }
   return out;
 }
 
-/** Outline of one wall run [s, e] with notches cut up from the bottom for each (partial) opening. */
-function runOutline(s0: number, e0: number, height: number, ops: [number, number, number][]): Vec2[] {
+/** Outline of one wall run [s, e] with notches cut up from the bottom for each opening. */
+function runOutline(s0: number, e0: number, height: number, ops: Opening[]): Vec2[] {
   const pts: Vec2[] = [];
-  if (!ops.length || ops[0][0] > s0 + 0.5) pts.push([s0, 0]);
-  for (const [a, b, h] of ops) {
-    if (a > s0 + 0.5) pts.push([a, 0]);
-    pts.push([a, h], [b, h]);
-    if (b < e0 - 0.5) pts.push([b, 0]);
+  if (!ops.length || ops[0].from > s0 + 0.5) pts.push([s0, 0]);
+  for (const o of ops) {
+    if (o.from > s0 + 0.5) pts.push([o.from, 0]);
+    pts.push([o.from, o.top], [o.to, o.top]);
+    if (o.to < e0 - 0.5) pts.push([o.to, 0]);
   }
-  const lastB = ops.length ? ops[ops.length - 1][1] : s0;
+  const lastB = ops.length ? ops[ops.length - 1].to : s0;
   if (!ops.length || lastB < e0 - 0.5) pts.push([e0, 0]);
   pts.push([e0, height], [s0, height]);
   return pts;
 }
 
 /**
- * Wall outlines with openings [a, b, h] cut from the bottom edge. Openings
- * that reach the top split the wall into separate runs.
+ * Wall outlines for a wall of `length` × `height` with openings cut in.
+ * Openings from the floor are notches; full-height ones split the wall into
+ * separate runs; raised ones (glass units) become holes.
  */
-export function wallProfiles(length: number, height: number, openings: [number, number, number][]): Vec2[][] {
-  const ops = mergeOpenings(
-    openings
-      .map(([a, b, h]) => [Math.max(0, a), Math.min(length, b), Math.min(h, height)] as [number, number, number])
-      .filter(([a, b]) => b - a > 1),
-  );
-  const out: Vec2[][] = [];
+export function wallProfiles(length: number, height: number, openings: Opening[]): WallOutline[] {
+  const clipped = openings
+    .map((o) => ({ from: Math.max(0, o.from), to: Math.min(length, o.to), bottom: Math.max(0, o.bottom), top: Math.min(o.top, height) }))
+    .filter((o) => o.to - o.from > 1 && o.top - o.bottom > 1);
+  const floor = mergeOpenings(clipped.filter((o) => o.bottom < 0.5).map((o) => ({ ...o, bottom: 0 })));
+  const raised = mergeOpenings(clipped.filter((o) => o.bottom >= 0.5));
+  const out: WallOutline[] = [];
   let start = 0;
-  let partial: [number, number, number][] = [];
+  let partial: Opening[] = [];
   const flush = (end: number) => {
-    if (end - start > 3) out.push(runOutline(start, end, height, partial));
+    if (end - start > 3) {
+      const holes = raised
+        .filter((o) => o.from >= start - 0.5 && o.to <= end + 0.5)
+        .map((o) => [[o.from, o.bottom], [o.to, o.bottom], [o.to, o.top], [o.from, o.top]] as Vec2[]);
+      out.push({ outline: runOutline(start, end, height, partial), holes });
+    }
     partial = [];
   };
-  for (const o of ops) {
-    if (o[2] >= height - 0.5) {
-      flush(o[0]);
-      start = o[1];
+  for (const o of floor) {
+    if (o.top >= height - 0.5) {
+      flush(o.from);
+      start = o.to;
     } else partial.push(o);
   }
   flush(length);
   return out;
 }
 
-/** Single-outline wall (no full-height openings). */
+/** Single-outline wall (no full-height openings, no holes). */
 export function wallProfile(length: number, height: number, openings: [number, number, number][]): Vec2[] {
-  return wallProfiles(length, height, openings)[0] ?? [];
-}
-
-/** Semi-buried doors have a heavier frame than full-buried ones. */
-const SEMI_FRAME = inToMm(3);
-/** How far a semi-buried leaf laps over its opening (and onto the frame). */
-const SEMI_OVERLAP = inToMm(1.5);
-/** Gasket line between a full-buried leaf and its frame. */
-const GASKET = 8;
-
-/** The hole a door needs in its wall: [from, to, height] along the wall's inside run. */
-function doorOpening(d: Door, wallH: number): [number, number, number] {
-  const fam = getDoorFamily(d.family);
-  const F = LIMITS.doorFrame;
-  const { width, height } = doorSize(d);
-  const x0 = d.offset;
-  const x1 = d.offset + width;
-  const mount = doorMount(d);
-  // Semi-buried: the leaf (x0..x1) overlaps its opening by SEMI_OVERLAP; the frame surrounds the opening.
-  if (mount === 'semi-buried') return [x0 + SEMI_OVERLAP - SEMI_FRAME, x1 - SEMI_OVERLAP + SEMI_FRAME, height - SEMI_OVERLAP + SEMI_FRAME];
-  // Full-buried: gasket then frame around the leaf.
-  if (mount === 'full-buried') return [x0 - GASKET - F, x1 + GASKET + F, height + GASKET + F];
-  if (fam.kind === 'rollup') return [x0 - F, x1 + F, Math.min(height, wallH)];
-  if (fam.kind === 'glass') return [x0, x1, height];
-  return [x0 - F, x1 + F, height + F];
+  return wallProfiles(length, height, openings.map(([from, to, top]) => ({ from, to, bottom: 0, top })))[0]?.outline ?? [];
 }
 
 export function buildCompartment(c: Compartment, site: SiteType): ComponentTree {
@@ -285,7 +291,7 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
       label: `Wall ${f.letter}`,
       letter: f.letter,
       edgeIndex: f.edge,
-      profiles: wallProfiles(len, wallH, openings.map(([a, bb, h]) => [a - EP, bb - EP, h])),
+      profiles: wallProfiles(len, wallH, openings.map((o) => ({ ...o, from: o.from - EP, to: o.to - EP }))),
       origin: [f.origin[0] + f.u[0] * EP, y0, f.origin[1] + f.u[1] * EP],
       rotationY: Math.atan2(f.n[0], f.n[1]),
       thickness: T,
@@ -303,6 +309,30 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
     doors.push({ id: d.id, index: k + 1, sku, wall: f.letter, offset: d.offset, label, tag });
     parts.push(...doorParts(c, d, f, y0, label));
   });
+
+  // ── Checker plate squares: 1' × 1' on the wall grid, on the outside face ──
+  const S = CHECKER_PLATE.size;
+  for (const q of c.accessories.checker) {
+    const f = frames[q.wall];
+    if (!f) continue;
+    const u = (q.col + 0.5) * S;
+    const v = (q.row + 0.5) * S;
+    const w = T + CHECKER_PLATE.thickness / 2;
+    parts.push({
+      kind: 'plate',
+      id: `${c.id}:plate-${q.wall}-${q.col}-${q.row}`,
+      label: `Checker plate, wall ${f.letter}`,
+      center: [f.origin[0] + f.u[0] * u + f.n[0] * w, y0 + v, f.origin[1] + f.u[1] * u + f.n[1] * w],
+      size: [S, S, CHECKER_PLATE.thickness],
+      rotationY: Math.atan2(f.n[0], f.n[1]),
+      wallRect: [q.col * S, q.row * S, (q.col + 1) * S, (q.row + 1) * S],
+    });
+  }
+
+  // ── Controller ──
+  const ctl = getControl(c.control.model);
+  const cf = frames[c.control.wall];
+  if (ctl && cf) parts.push(...controlParts(c, ctl, cf, fTop));
 
   // ── Dimensions on the outside face, just above the walls ──
   const dimY = fTop + wallH + 91;
@@ -380,9 +410,11 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
   const x1 = d.offset + W;
   const mid = (x0 + x1) / 2;
   const rot = Math.atan2(f.n[0], f.n[1]);
+  // Glass units can be raised off the floor; everything else stands on it.
+  const lift = fam.kind === 'glass' ? d.elevation : 0;
   const at = (u: number, v: number, w: number): Vec3 => [
     f.origin[0] + f.u[0] * u + f.n[0] * w,
-    y0 + v,
+    y0 + lift + v,
     f.origin[1] + f.u[1] * u + f.n[1] * w,
   ];
   const id = (s: string) => `${c.id}:${d.id}:${s}`;
@@ -454,6 +486,8 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     }
 
     const span = Math.abs(latchEdge - hingeEdge);
+    // Hinge bases and the strike sit in the middle of the frame showing beside the leaf.
+    const frameMid = mount === 'semi-buried' ? (SEMI_FRAME - SEMI_OVERLAP) / 2 : GASKET + F / 2;
     const inward = -hs; // from the hinge edge toward the latch edge, along u
     // Cam-lift hinges: strap on the leaf, knuckle at the edge, base plate on the wall or frame.
     const hingeFracs = mount === 'semi-buried' ? [0.13, 0.285, 0.895] : [0.13, 0.27, 0.83];
@@ -461,7 +495,8 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
       const v = leafTop * (1 - fr);
       out.push(box('hinge', `hinge-${k + 1}`, hingeEdge + inward * 120, v, front + 9, [240, 42, 18]));
       out.push(pin(`pin-${k + 1}`, hingeEdge + hs * 18, v, front + 6, 16, 120));
-      out.push(box('hinge', `hinge-base-${k + 1}`, hingeEdge + hs * 40, v, onWall + (front - onWall) / 2, [40, 130, front - onWall + 12]));
+      out.push(box('hinge', `hinge-base-${k + 1}`, hingeEdge + hs * frameMid, v, onWall + (front - onWall) / 2, [40, 130, front - onWall + 12]));
+      out.push(box('hinge', `hinge-arm-${k + 1}`, hingeEdge + (hs * frameMid) / 2, v, front - 8, [frameMid, 30, 16]));
     });
 
     // Latch handle about mid height on the latch side, strike on the wall or frame.
@@ -470,7 +505,7 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     out.push(box('handle', 'handle-post-1', latchEdge - inward * 70, lv, front + 22, [22, 22, 44], { color: handle }));
     out.push(box('handle', 'handle-post-2', latchEdge - inward * 280, lv, front + 22, [22, 22, 44], { color: handle }));
     out.push(box('latch', 'latch', latchEdge - inward * 28, lv, front + 26, [60, 110, 52]));
-    out.push(box('latch', 'strike', latchEdge + inward * 36, lv, onWall + (front - onWall) / 2 + 10, [55, 90, front - onWall + 30]));
+    out.push(box('latch', 'strike', latchEdge + inward * frameMid, lv, onWall + (front - onWall) / 2 + 10, [50, 90, front - onWall + 30]));
 
     // Self closer (standard on these doors): vertical body across the top edge, latch side.
     const cu = hingeEdge + inward * span * (mount === 'semi-buried' ? 0.84 : 0.8);
@@ -619,9 +654,9 @@ function glassParts(
     const vm = dv0 + DH / 2;
     const gw = fw - 20; // glass centre
     const n = `g${i + 1}`;
-    // Hinge pins: small white squares at the top corners of each door
-    out.push(box('trim', `${n}-pin`, i === 0 ? du0 + 8 : du0, H - FG / 2, fw + 2, [10, 10, 4], { color: '#f2f2f2' }));
-    if (i === g.count - 1) out.push(box('trim', `${n}-pin-end`, du1 - 8, H - FG / 2, fw + 2, [10, 10, 4], { color: '#f2f2f2' }));
+    // Hinge pin: the small white square in the photos, at the top corner on each door's hinge side.
+    const pinU = hingeSides[i] === 'left' ? du0 + 8 : du1 - 8;
+    out.push(box('trim', `${n}-pin`, pinU, H - FG / 2, fw + 2, [10, 10, 4], { color: '#f2f2f2', label: 'Hinge' }));
 
     if (r > 0) {
       out.push(box('door-leaf', `${n}-stile-l`, du0 + r / 2, vm, fw - 20, [r, DH, 40], { color: col.door, label }));
@@ -659,6 +694,42 @@ function glassParts(
       const inset = Math.max(r, 22) + 70;
       out.push(box('logo', 'g-logo', du1 - inset, dv0 + DH - inset + 10, gw + 13, [125, 80, 1], { logoStyle: 'white' }));
     }
+  }
+  return out;
+}
+
+/**
+ * Controller on the outside of its wall, after the ICC product photos.
+ * ICC-TSC2000: black housing with a teal bumper ring, black glass face with
+ * the segment display and five touch buttons, cable and gland underneath.
+ * ICC-TC1000: dark grey panel controller with a raised bezel.
+ */
+function controlParts(c: Compartment, def: NonNullable<ReturnType<typeof getControl>>, f: WallFrame, fTop: number): Part[] {
+  const T = c.wallThickness;
+  const rot = Math.atan2(f.n[0], f.n[1]);
+  const u = c.control.offset;
+  const v = c.control.height;
+  const at = (du: number, dv: number, w: number): Vec3 => [
+    f.origin[0] + f.u[0] * (u + du) + f.n[0] * w,
+    fTop + v + dv,
+    f.origin[1] + f.u[1] * (u + du) + f.n[1] * w,
+  ];
+  const id = (s: string) => `${c.id}:control:${s}`;
+  const label = `${def.label} ${def.sku}`;
+  const W = def.width;
+  const H = def.height;
+  const D = def.depth;
+  const out: Part[] = [];
+  if (def.id === 'TSC2000') {
+    out.push({ kind: 'control-body', id: id('ring'), center: at(0, 0, T + D * 0.35), size: [W, H, D * 0.7], rotationY: rot, color: '#3bb6c6', label });
+    out.push({ kind: 'control-body', id: id('body'), center: at(0, 0, T + D * 0.55), size: [W - 10, H - 10, D * 0.9], rotationY: rot, color: '#16181b', label });
+    out.push({ kind: 'screen', id: id('face'), center: at(0, 0, T + D + 0.5), size: [W - 18, H - 18, 1], rotationY: rot, screen: 'TSC2000', label });
+    // Cable and gland underneath
+    out.push({ kind: 'cable', id: id('cable'), center: at(0, -H / 2 - 32, T + 14), radius: 4, height: 64, label });
+    out.push({ kind: 'cable', id: id('gland'), center: at(0, -H / 2 - 70, T + 14), radius: 11, height: 16, label });
+  } else {
+    out.push({ kind: 'control-body', id: id('bezel'), center: at(0, 0, T + D / 2), size: [W, H, D], rotationY: rot, color: '#2b2e33', label });
+    out.push({ kind: 'screen', id: id('face'), center: at(0, 0, T + D + 0.5), size: [W - 8, H - 8, 1], rotationY: rot, screen: 'TC1000', label });
   }
   return out;
 }

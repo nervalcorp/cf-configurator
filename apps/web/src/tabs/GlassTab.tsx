@@ -1,4 +1,10 @@
 import {
+  framesByLetter,
+  CHECKER_PLATE,
+  GLASS_MAX_ELEVATION,
+  getDoorFamily,
+  paintSquares,
+  squaresBelow,
   CATALOG_SOURCE,
   type Compartment,
   type Door,
@@ -19,6 +25,7 @@ import {
   moveDoor,
   offsetRange,
   removeDoor,
+  slideDoor,
   updateDoor,
 } from '@wic/core';
 import { FloorPlan } from '../floorplan/FloorPlan';
@@ -119,6 +126,16 @@ function GlassEditor({ c, unit, tag }: { c: Compartment; unit: Door; tag: string
   const loIn = Math.ceil(mmToIn(lo));
   const hiIn = Math.max(loIn, Math.floor(mmToIn(hi)));
   // Changing size can push the unit off its wall; re-seat it near where it was.
+  const fam = getDoorFamily('glass');
+  const maxLiftIn = Math.max(0, Math.floor(mmToIn(Math.min(GLASS_MAX_ELEVATION, c.height - doorSize(unit).height - fam.headroom))));
+  // Squares already on the wall under this unit.
+  const below = (() => {
+    const S = CHECKER_PLATE.size;
+    const w = doorSize(unit).width;
+    return c.accessories.checker.filter(
+      (q) => q.wall === unit.wall && (q.col + 1) * S > unit.offset && q.col * S < unit.offset + w && (q.row + 1) * S <= unit.elevation + 0.5,
+    );
+  })();
   const setGlass = (patch: Partial<GlassParams>) =>
     edit((x) => moveDoor(updateDoor(x, unit.id, { glass: { ...unit.glass, ...patch } }), unit.id, unit.wall, unit.offset));
 
@@ -162,7 +179,7 @@ function GlassEditor({ c, unit, tag }: { c: Compartment; unit: Door; tag: string
         <div className="field">
           <span className="field-label">Wall</span>
           <div className="wall-picker" role="radiogroup" aria-label="Wall">
-            {frames.map((w) => (
+            {framesByLetter(frames).map((w) => (
               <button
                 key={w.edge}
                 type="button"
@@ -187,11 +204,49 @@ function GlassEditor({ c, unit, tag }: { c: Compartment; unit: Door; tag: string
             display={formatInches(unit.offset)}
             minLabel={`${loIn}"`}
             maxLabel={`${hiIn}"`}
-            onInput={(v) => edit((x) => updateDoor(x, unit.id, { offset: inToMm(v) }), { transient: true })}
+            onInput={(v) => edit((x) => slideDoor(x, unit.id, inToMm(v)), { transient: true })}
             onCommit={commit}
           />
         ) : (
           <p className="panel-error">This unit does not fit on wall {f?.letter}. Pick a longer wall or the two-door unit.</p>
+        )}
+      </Section>
+
+      <Section title="Height off the floor" hint="Up to 3' 0&quot;">
+        {maxLiftIn > 0 ? (
+          <Slider
+            label="Raise the unit"
+            value={Math.min(Math.round(mmToIn(unit.elevation)), maxLiftIn)}
+            min={0}
+            max={maxLiftIn}
+            step={1}
+            display={formatInches(unit.elevation)}
+            minLabel={'0"'}
+            maxLabel={`${maxLiftIn}"`}
+            onInput={(v) => edit((x) => updateDoor(x, unit.id, { elevation: inToMm(v) }), { transient: true })}
+            onCommit={commit}
+          />
+        ) : (
+          <p className="panel-note">The wall panels are too short to raise this unit. Taller panels allow up to 3' 0".</p>
+        )}
+        {unit.elevation >= CHECKER_PLATE.size - 0.5 && (
+          <>
+            <div className="button-row">
+              <button type="button" className="btn btn-ghost" onClick={() => edit((x) => paintSquares(x, squaresBelow(x, unit), true))}>
+                Fill below with checker plate
+              </button>
+              {below.length > 0 && (
+                <button type="button" className="btn btn-ghost" onClick={() => edit((x) => paintSquares(x, below, false))}>
+                  Remove
+                </button>
+              )}
+            </div>
+            <p className="panel-note">
+              {below.length
+                ? `${below.length} square${below.length === 1 ? '' : 's'} (1' × 1') under this unit.`
+                : 'Adds whole 1\' × 1\' squares under the unit. Edit them square by square on the Accessories step.'}
+            </p>
+          </>
         )}
       </Section>
     </>

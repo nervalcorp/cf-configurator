@@ -1,4 +1,5 @@
 import {
+  framesByLetter,
   type Compartment,
   CATALOG_SOURCE,
   DOOR_CLOSER_SKU,
@@ -22,6 +23,7 @@ import {
   moveDoor,
   offsetRange,
   removeDoor,
+  slideDoor,
   updateDoor,
 } from '@wic/core';
 import { FloorPlan } from '../floorplan/FloorPlan';
@@ -181,7 +183,7 @@ function DoorEditor({ c, door, tag, patch }: { c: Compartment; door: Door; tag: 
           <div className="field">
             <span className="field-label">Wall</span>
             <div className="wall-picker" role="radiogroup" aria-label="Wall">
-              {frames.map((w) => (
+              {framesByLetter(frames).map((w) => (
                 <button
                   key={w.edge}
                   type="button"
@@ -206,7 +208,7 @@ function DoorEditor({ c, door, tag, patch }: { c: Compartment; door: Door; tag: 
               display={formatInches(door.offset)}
               minLabel={`${loIn}"`}
               maxLabel={`${hiIn}"`}
-              onInput={(v) => edit((x) => updateDoor(x, door.id, { offset: inToMm(v) }), { transient: true })}
+              onInput={(v) => edit((x) => slideDoor(x, door.id, inToMm(v)), { transient: true })}
               onCommit={commit}
             />
           ) : (

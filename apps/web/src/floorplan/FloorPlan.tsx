@@ -30,9 +30,9 @@ import {
   jointNumber,
   moveDoor,
   offsetPolygon,
-  offsetRange,
   pickHandle,
-  updateDoor,
+  slideDoor,
+  getControl,
   wallFrames,
   wallPoint,
 } from '@wic/core';
@@ -308,6 +308,24 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
     ctx.fillText(doorTag(c.doors, d.id), ...lab);
   });
 
+  // Controller: a small dark tab on the outside of its wall
+  const ctl = getControl(c.control.model);
+  const cf = frames[c.control.wall];
+  if (ctl && cf) {
+    const a = P(wallPoint(cf, c.control.offset - ctl.width / 2, c.wallThickness + 20));
+    const b = P(wallPoint(cf, c.control.offset + ctl.width / 2, c.wallThickness + 20));
+    ctx.strokeStyle = '#1f2a33';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(...a);
+    ctx.lineTo(...b);
+    ctx.stroke();
+    ctx.fillStyle = '#1f2a33';
+    ctx.font = '600 10px Outfit, sans-serif';
+    const lp = P(wallPoint(cf, c.control.offset, c.wallThickness + 140));
+    ctx.fillText('CTRL', ...lp);
+  }
+
   // Corner handles (shape mode) and joint numbers
   for (let i = 0; i < n; i++) {
     const [x, y] = P(fp[i]);
@@ -443,10 +461,8 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
               const door = c.doors.find((x) => x.id === d.id);
               const f = door && wallFrames(fpOf(c), c.wallThickness)[door.wall];
               if (!door || !f) return c;
-              const along = project(f, c.wallThickness, [px, py]).along - d.grab;
-              const [lo, hi] = offsetRange(door, f.length);
-              const snapped = Math.round(along / 25.4) * 25.4;
-              return updateDoor(c, d.id, { offset: Math.min(hi, Math.max(lo, snapped)) });
+              // Slides toward the pointer and stops where it meets a neighbour.
+              return slideDoor(c, d.id, project(f, c.wallThickness, [px, py]).along - d.grab);
             },
             { transient: true },
           );

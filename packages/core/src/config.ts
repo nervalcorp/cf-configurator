@@ -5,9 +5,9 @@
  */
 import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
-import type { DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
+import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -49,6 +49,24 @@ export interface Door {
   finish: TrafficFinish;
   /** Glass display door units only. */
   glass: GlassParams;
+  /** Glass display door units only: how far the unit is raised off the floor. */
+  elevation: number;
+}
+
+/** One 1' × 1' checker plate square: wall edge, grid column from the left end, row from the floor. */
+export interface CheckerSquare {
+  wall: number;
+  col: number;
+  row: number;
+}
+
+export interface ControlParams {
+  model: ControlModel;
+  wall: number;
+  /** Centre of the controller along the wall's inside run. */
+  offset: number;
+  /** Centre height from the floor. */
+  height: number;
 }
 
 export interface Compartment {
@@ -76,7 +94,10 @@ export interface Compartment {
   /** Accessories tab. */
   accessories: {
     ramp: RampType;
+    checker: CheckerSquare[];
   };
+  /** Refrigeration tab: the walk-in controller. */
+  control: ControlParams;
 }
 
 export interface Configuration {
@@ -136,7 +157,9 @@ export function defaultCompartment(id = 'c1'): Compartment {
       decal: defaultDecal(),
       floor: 'standard',
     },
-    accessories: { ramp: 'interior' },
+    accessories: { ramp: 'interior', checker: [] },
+    // Beside door d1 (latch side, hinged right) at eye level.
+    control: { model: 'TSC2000', wall: 2, offset: inToMm(8), height: inToMm(60) },
   };
 }
 
@@ -154,6 +177,7 @@ export function newDoor(id: string, wall: number, offset: number): Door {
     handle: 'included',
     finish: 'GR',
     glass: { series: 'elite', finish: 'BK', count: 2 },
+    elevation: 0,
   };
 }
 
@@ -172,11 +196,13 @@ export function defaultConfiguration(): Configuration {
  * v1 → v2: the single front `door` became a `doors` list on any wall.
  * v2 → v3: stucco and stainless finishes were retired (they become White
  * Coated) and the logo decal finish was added.
+ * v3 → v4: glass door elevation, checker plates and the controller were added;
+ * older files get no plates and a controller placed by normalize() (wall -1).
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -199,7 +225,9 @@ export function migrate(input: unknown): Configuration {
         id: c.id ?? `c${i + 1}`,
         doors,
         finishes: migrateFinishes(base.finishes, c.finishes),
-        accessories: { ...base.accessories, ...c.accessories },
+        accessories: { ...base.accessories, ...c.accessories, checker: c.accessories?.checker ?? [] },
+        // wall -1 asks normalize() to place it beside the first door.
+        control: c.control ?? { ...base.control, wall: -1 },
       };
     }),
   };

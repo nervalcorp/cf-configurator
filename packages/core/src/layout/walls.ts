@@ -123,3 +123,8 @@ export function wallFrames(poly: Polygon, T: number): WallFrame[] {
 export function wallPoint(f: WallFrame, along: number, out: number): Vec2 {
   return [f.origin[0] + f.u[0] * along + f.n[0] * out, f.origin[1] + f.u[1] * along + f.n[1] * out];
 }
+
+/** Wall frames in letter order (A, B, C…), for pickers. */
+export function framesByLetter(frames: WallFrame[]): WallFrame[] {
+  return [...frames].sort((a, b) => a.letter.localeCompare(b.letter));
+}
