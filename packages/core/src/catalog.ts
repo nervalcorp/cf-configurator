@@ -299,3 +299,17 @@ export const getControl = (id: ControlModel) => CONTROLS.find((c) => c.id === id
 
 /** Where a controller may sit: centre height from the floor. Default is eye level. */
 export const CONTROL_HEIGHT = { min: inToMm(40), max: inToMm(66), default: inToMm(60) };
+
+/**
+ * ICC-R3436 aluminum ramp, 34" wide × 36" long, polished finish. Sits outside a
+ * door and rises from the ground to the top of the floor. Only standard and
+ * DuraFloor floors stand proud of the ground, so only they get a ramp.
+ */
+export const RAMP = { sku: 'ICC-R3436', label: 'Aluminum ramp 34" × 36"', width: inToMm(34), length: inToMm(36) };
+
+/** Doors a 34" ramp serves: walk-through doors within 2" of its width (man doors, single traffic doors). */
+export function rampServes(d: { family: DoorFamilyId; glass: GlassParams }): boolean {
+  const k = getDoorFamily(d.family).kind;
+  if (k !== 'swing' && k !== 'traffic') return false;
+  return Math.abs(doorSize(d).width - RAMP.width) <= inToMm(2) + 0.01;
+}

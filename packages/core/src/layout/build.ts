@@ -14,8 +14,8 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, getControl, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
-import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner } from '../geometry';
+import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, RAMP, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
@@ -93,6 +93,23 @@ export interface SlabPart extends Base {
   polygon: Vec2[];
   y: number;
   thickness: number;
+  /** Recessed floors show as a concrete slab running out past the walls. */
+  concrete?: boolean;
+}
+
+/**
+ * Aluminum ramp outside a door. `origin` is on the ground at the outside face
+ * of the wall, at the ramp's left edge (seen from outside); the ramp runs
+ * `width` along the wall and `length` away from it, rising to `height` at the wall.
+ */
+export interface RampPart extends Base {
+  kind: 'ramp';
+  origin: Vec3;
+  rotationY: number;
+  width: number;
+  length: number;
+  height: number;
+  doorId: string;
 }
 
 /**
@@ -117,7 +134,7 @@ export interface WallPart extends Base {
   thickness: number;
 }
 
-export type Part = BoxPart | CylinderPart | SlabPart | WallPart;
+export type Part = BoxPart | CylinderPart | SlabPart | WallPart | RampPart;
 
 export interface Dimension {
   a: Vec3;
@@ -259,7 +276,12 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
   const parts: Part[] = [];
   const dimensions: Dimension[] = [];
 
-  if (hasFloor) parts.push({ kind: 'floor', id: `${c.id}:floor`, label: 'Floor', polygon: fp, y: 0, thickness: floorT });
+  if (c.finishes.floor === 'recessed') {
+    // Concrete slab running 4" past the walls, as on recessed installs.
+    parts.push({ kind: 'floor', id: `${c.id}:floor`, label: 'Recessed floor', polygon: offsetPolygon(fp, inToMm(4)), y: 0, thickness: floorT, concrete: true });
+  } else if (hasFloor) {
+    parts.push({ kind: 'floor', id: `${c.id}:floor`, label: 'Floor', polygon: fp, y: 0, thickness: floorT });
+  }
   if (site === 'outdoor') parts.push({ kind: 'roof', id: `${c.id}:roof`, label: 'Roof', polygon: fp, y: fTop + wallH, thickness: T });
 
   // ── Corner posts ──
@@ -310,6 +332,27 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
     parts.push(...doorParts(c, d, f, y0, label));
   });
 
+  // ── Ramps outside 34" doors, on floors that stand proud of the ground ──
+  if (c.accessories.ramp === 'exterior' && (c.finishes.floor === 'standard' || c.finishes.floor === 'durafloor')) {
+    for (const d of c.doors) {
+      const f = frames[d.wall];
+      if (!f || !rampServes(d)) continue;
+      const mid = d.offset + doorSize(d).width / 2;
+      const u0 = mid - RAMP.width / 2;
+      parts.push({
+        kind: 'ramp',
+        id: `${c.id}:${d.id}:ramp`,
+        label: `${RAMP.label} (${RAMP.sku})`,
+        origin: [f.origin[0] + f.u[0] * u0 + f.n[0] * T, 0, f.origin[1] + f.u[1] * u0 + f.n[1] * T],
+        rotationY: Math.atan2(f.n[0], f.n[1]),
+        width: RAMP.width,
+        length: RAMP.length,
+        height: fTop,
+        doorId: d.id,
+      });
+    }
+  }
+
   // ── Checker plate squares: 1' × 1' on the wall grid, on the outside face ──
   const S = CHECKER_PLATE.size;
   for (const q of c.accessories.checker) {
@@ -350,13 +393,25 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
       labelOffset: [nx * 37, 46, nz * 37],
     });
   }
-  const h0 = fp[0];
-  dimensions.push({
-    a: [h0[0] + 152, fTop, h0[1] + 152],
-    b: [h0[0] + 152, fTop + wallH, h0[1] + 152],
-    label: formatInches(c.height),
-    labelOffset: [91, 0, 91],
+  // Height on the outside of the front-right corner, which faces the default view.
+  let hc = 0;
+  fp.forEach((p, i) => {
+    if (!isInsideCorner(fp, i) && p[0] + p[1] > fp[hc][0] + fp[hc][1]) hc = i;
   });
+  {
+    const p = fp[hc];
+    const n1 = edgeNormal(fp[(hc - 1 + n) % n], p, cw);
+    const n2 = edgeNormal(p, fp[(hc + 1) % n], cw);
+    const bx = (n1[0] + n2[0]) / Math.SQRT2;
+    const bz = (n1[1] + n2[1]) / Math.SQRT2;
+    const out = 180;
+    dimensions.push({
+      a: [p[0] + bx * out, fTop, p[1] + bz * out],
+      b: [p[0] + bx * out, fTop + wallH, p[1] + bz * out],
+      label: formatInches(c.height),
+      labelOffset: [bx * 110, 0, bz * 110],
+    });
+  }
 
   const walls: WallSummary[] = frames
     .map((f) => ({

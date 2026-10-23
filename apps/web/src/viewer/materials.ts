@@ -57,7 +57,13 @@ export class Materials {
   curtain = new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.55, metalness: 0.35 });
   highlight = new THREE.MeshStandardMaterial({ color: 0x14b8a6, roughness: 0.4, emissive: 0x0d9488, emissiveIntensity: 0.35 });
   edge = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.22 });
-  dimLine = new THREE.LineBasicMaterial({ color: 0xdd3333 });
+  dimLine = new THREE.LineBasicMaterial({ color: 0x0e9aa7 });
+  /** Recessed floors: concrete slab. */
+  concrete = new THREE.MeshStandardMaterial({ color: 0x7d8185, roughness: 0.95, metalness: 0 });
+  /** Ramp body (polished aluminium) and its grit strips. */
+  rampBody = new THREE.MeshStandardMaterial({ color: 0xcfd3d7, roughness: 0.3, metalness: 0.45 });
+  rampGrit = new THREE.MeshStandardMaterial({ color: 0x9a9ea2, roughness: 0.95, metalness: 0.1 });
+  rampSlot = new THREE.MeshStandardMaterial({ color: 0x2b2e31, roughness: 0.7 });
 
   /** Colour of the outside; with a decal map the panel colour stays white so the map shows true. */
   setFinish(finish: ExteriorFinish, color: string, decal: THREE.Texture | null) {
@@ -92,7 +98,7 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.concrete, this.rampBody, this.rampGrit, this.rampSlot, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
@@ -105,5 +111,41 @@ export class Materials {
     this.edge.dispose();
     this.dimLine.dispose();
     this.flag.dispose();
+  }
+}
+
+/**
+ * The outside finish of one compartment. Compartments can have different
+ * finishes, so each gets its own wall, corner and roof materials.
+ */
+export class Skin {
+  exterior = new THREE.MeshStandardMaterial({ color: '#f0f0f0', roughness: 0.45, metalness: 0.05 });
+  exteriorPlain = new THREE.MeshStandardMaterial({ color: '#f0f0f0', roughness: 0.45, metalness: 0.05 });
+  roof = new THREE.MeshStandardMaterial({ color: '#f0f0f0', transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+  decalKey: string | null = null;
+  decalTex: THREE.Texture | null = null;
+
+  setFinish(finish: ExteriorFinish, color: string, decal: THREE.Texture | null) {
+    const s = FINISH_SURFACE[finish];
+    for (const m of [this.exterior, this.exteriorPlain]) {
+      m.roughness = s.roughness;
+      m.metalness = s.metalness;
+    }
+    this.exteriorPlain.color.set(color);
+    this.roof.color.set(color);
+    if (this.exterior.map !== decal) {
+      this.exterior.map = decal;
+      this.exterior.needsUpdate = true;
+    }
+    this.exterior.color.set(decal ? '#ffffff' : color);
+  }
+
+  materials(): THREE.Material[] {
+    return [this.exterior, this.exteriorPlain, this.roof];
+  }
+
+  dispose() {
+    this.decalTex?.dispose();
+    for (const m of this.materials()) m.dispose();
   }
 }

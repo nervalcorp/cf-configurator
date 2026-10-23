@@ -12,8 +12,12 @@ import {
   type Configuration,
   type SiteType,
   type TabId,
+  addCompartment,
+  defaultCompartment,
   defaultConfiguration,
+  duplicateCompartment,
   normalize,
+  removeCompartment,
 } from '@wic/core';
 
 export const TABS: { id: TabId; label: string }[] = [
@@ -53,6 +57,11 @@ interface State {
   redo: () => void;
   load: (config: Configuration) => void;
   setUi: (patch: Partial<UI>) => void;
+  /** Make a compartment the one the panel edits. */
+  setActive: (id: string) => void;
+  addCompartment: () => void;
+  duplicateCompartment: () => void;
+  removeCompartment: (id: string) => void;
 }
 
 const HISTORY = 50;
@@ -126,6 +135,31 @@ export const useStore = create<State>((set, get) => {
     },
 
     setUi: (patch) => set((s) => ({ ui: { ...s.ui, ...patch } })),
+
+    setActive: (id) => {
+      const c = get().config.compartments.find((x) => x.id === id);
+      if (!c) return;
+      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null } }));
+    },
+
+    addCompartment: () => {
+      const r = addCompartment(get().config, (id, name) => defaultCompartment(id, name));
+      apply(r.config, false);
+      get().setActive(r.id);
+    },
+
+    duplicateCompartment: () => {
+      const r = duplicateCompartment(get().config, get().ui.active);
+      apply(r.config, false);
+      get().setActive(r.id);
+    },
+
+    removeCompartment: (id) => {
+      const next = removeCompartment(get().config, id);
+      if (next === get().config) return;
+      apply(next, false);
+      get().setActive(next.compartments[0].id);
+    },
   };
 });
 

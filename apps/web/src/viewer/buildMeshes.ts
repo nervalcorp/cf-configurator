@@ -4,8 +4,8 @@
  * All geometry is in mm; the caller scales the root group to metres.
  */
 import * as THREE from 'three';
-import type { BoxPart, ComponentTree, Dimension, Face, Part, SlabPart, WallPart } from '@wic/core';
-import type { Materials } from './materials';
+import type { BoxPart, ComponentTree, Dimension, Face, Part, RampPart, SlabPart, WallPart } from '@wic/core';
+import type { Materials, Skin } from './materials';
 
 export interface Built {
   root: THREE.Group;
@@ -21,13 +21,13 @@ const FACE_SLOT: Record<Face, number> = { '+x': 0, '-x': 1, '+z': 4, '-z': 5 };
  * @param flags part id → problems with that part; flagged parts get a red overlay
  *              and their messages on hover.
  */
-export function buildMeshes(tree: ComponentTree, mats: Materials, flags: Map<string, string[]> = new Map()): Built {
+export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, flags: Map<string, string[]> = new Map()): Built {
   const root = new THREE.Group();
   const dims = new THREE.Group();
   const pickable: THREE.Mesh[] = [];
 
   for (const part of tree.parts) {
-    const mesh = partMesh(part, mats);
+    const mesh = partMesh(part, mats, skin);
     if (!mesh) continue;
     mesh.castShadow = part.kind !== 'roof';
     mesh.receiveShadow = true;
@@ -56,15 +56,17 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, flags: Map<str
 
 const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide', 'glass', 'plate']);
 
-function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
+function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
   switch (part.kind) {
     case 'post': {
       const slots: THREE.Material[] = Array(6).fill(mats.interior);
-      for (const f of part.exteriorFaces ?? []) slots[FACE_SLOT[f]] = mats.exteriorPlain;
+      for (const f of part.exteriorFaces ?? []) slots[FACE_SLOT[f]] = skin.exteriorPlain;
       return boxMesh(part, slots);
     }
     case 'wall':
-      return wallMesh(part, mats);
+      return wallMesh(part, mats, skin);
+    case 'ramp':
+      return rampMesh(part, mats);
     case 'badge': {
       if (!part.logo) return boxMesh(part, tinted(mats.threshold, part.color ?? '#1f2a33'));
       const slots: THREE.Material[] = Array(6).fill(mats.badgeBody);
@@ -118,7 +120,7 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
     }
     case 'floor':
     case 'roof':
-      return slabMesh(part, part.kind === 'floor' ? mats.floor : mats.roof);
+      return slabMesh(part, part.kind === 'roof' ? skin.roof : part.concrete ? mats.concrete : mats.floor);
   }
 }
 
@@ -152,7 +154,7 @@ function slabMesh(p: SlabPart, mat: THREE.Material) {
  * z = T) and the sides in the next; split the caps so only the outside one
  * gets the exterior finish. One geometry per outline keeps the groups simple.
  */
-function wallMesh(p: WallPart, mats: Materials) {
+function wallMesh(p: WallPart, mats: Materials, skin: Skin) {
   const geos = p.profiles.map(({ outline, holes }) => {
     const shape = new THREE.Shape(outline.map(([x, y]) => new THREE.Vector2(x, y)));
     for (const h of holes) shape.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
@@ -169,10 +171,49 @@ function wallMesh(p: WallPart, mats: Materials) {
     return geo;
   });
   const geo = geos.length === 1 ? geos[0] : mergeWithGroups(geos);
-  const m = new THREE.Mesh(geo, [mats.interior, mats.exterior]);
+  const m = new THREE.Mesh(geo, [mats.interior, skin.exterior]);
   m.position.set(...p.origin);
   m.rotation.y = p.rotationY;
   return m;
+}
+
+/**
+ * ICC-R3436 ramp, after the product photo: a polished aluminium wedge with four
+ * grit strips across the slope, a grit nosing at each end, and a handle slot in
+ * each side near the high end. Local x runs along the wall, local z away from it.
+ */
+function rampMesh(p: RampPart, mats: Materials) {
+  const L = p.length;
+  const H = Math.max(p.height, 6);
+  const W = p.width;
+  const lip = Math.min(6, H * 0.15);
+  // Side profile in (z, y), extruded along x.
+  const shape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(L, 0), new THREE.Vector2(L, lip), new THREE.Vector2(0, H)]);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: W, bevelEnabled: false });
+  // Profile x → local z, extrusion → local x.
+  geo.rotateY(-Math.PI / 2);
+  geo.translate(W, 0, 0);
+  const body = new THREE.Mesh(geo, mats.rampBody);
+  const slope = Math.atan2(H - lip, L);
+  const surfaceY = (z: number) => H - ((H - lip) * z) / L;
+  for (const t of [0.04, 0.22, 0.42, 0.62, 0.82, 0.97]) {
+    const z = t * L;
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(W - 10, 3, t === 0.04 || t === 0.97 ? 30 : 22), mats.rampGrit);
+    strip.position.set(W / 2, surfaceY(z) + 1.5, z);
+    strip.rotation.x = slope;
+    body.add(strip);
+  }
+  if (H > 35) {
+    for (const x of [-0.6, W + 0.6]) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(2, H * 0.35, L * 0.12), mats.rampSlot);
+      slot.position.set(x, H * 0.45, L * 0.1);
+      body.add(slot);
+    }
+  }
+  body.position.set(...p.origin);
+  body.rotation.y = p.rotationY;
+  body.castShadow = true;
+  return body;
 }
 
 /**
@@ -250,7 +291,7 @@ function labelSprite(text: string) {
   ctx.beginPath();
   ctx.roundRect(x, 12, w, 56, 12);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(221,51,51,0.6)';
+  ctx.strokeStyle = 'rgba(14,154,167,0.65)';
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = '#0f172a';

@@ -1,4 +1,5 @@
-import { LIMITS, SHAPES, type Temperature, formatFeetInches, getShape, inToMm, mmToIn, setShape } from '@wic/core';
+import { type FloorType, LIMITS, SHAPES, type Side, type Temperature, besidePosition, formatFeetInches, getShape, inToMm, mmToIn, setShape } from '@wic/core';
+import { useState } from 'react';
 import { FloorPlan, ShapeThumb } from '../floorplan/FloorPlan';
 import { useActiveCompartment, useStore } from '../store';
 import { Section, Slider, Toggle } from '../shell/controls';
@@ -6,13 +7,38 @@ import { Section, Slider, Toggle } from '../shell/controls';
 export function LayoutTab() {
   const c = useActiveCompartment();
   const site = useStore((s) => s.config.site.type);
-  const { setSite, editCompartment: edit, commit } = useStore.getState();
+  const all = useStore((s) => s.config.compartments);
+  const { setSite, editCompartment: edit, commit, removeCompartment } = useStore.getState();
   const box = LIMITS.box;
   const hgt = LIMITS.height;
 
   return (
     <>
-      <Section title="Walk-in type">
+      <Section title="Compartment">
+        <label className="field">
+          <span className="field-label">Name</span>
+          <input
+            className="text-input"
+            type="text"
+            value={c.name}
+            maxLength={40}
+            onChange={(e) => edit((x) => ({ ...x, name: e.target.value }), { transient: true })}
+            onBlur={(e) => {
+              if (!e.target.value.trim()) edit((x) => ({ ...x, name: `Compartment ${all.indexOf(c) + 1}` }));
+              commit();
+            }}
+          />
+        </label>
+        {all.length > 1 && (
+          <button type="button" className="btn-link danger" onClick={() => removeCompartment(c.id)}>
+            Remove {c.name}
+          </button>
+        )}
+      </Section>
+
+      {all.length > 1 && <PositionSection />}
+
+      <Section title="Walk-in type" hint="All compartments">
         <Toggle
           label="Walk-in type"
           value={site}
@@ -98,6 +124,87 @@ export function LayoutTab() {
           <p className="panel-note">Drag the inside corner of the cut-out on the floor plan to change its size.</p>
         )}
       </Section>
+
+      <Section title="Floor">
+        <select
+          className="custom-select"
+          aria-label="Floor"
+          value={c.finishes.floor}
+          onChange={(e) => edit((x) => ({ ...x, finishes: { ...x.finishes, floor: e.target.value as FloorType } }))}
+        >
+          {FLOORS.filter((o) => !(c.temperature === 'freezer' && o.id === 'none')).map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {c.temperature === 'freezer' && <p className="panel-note">Freezers always include an insulated floor.</p>}
+        {c.finishes.floor === 'recessed' && <p className="panel-note">Sits in a recessed concrete slab, flush with the room floor. No ramp needed.</p>}
+      </Section>
     </>
+  );
+}
+
+const FLOORS: { id: FloorType; label: string }[] = [
+  { id: 'standard', label: 'Standard floor (600 lb/sq ft, no rolling traffic)' },
+  { id: 'durafloor', label: 'DuraFloor (12,000 lb/sq ft, no rolling traffic)' },
+  { id: 'recessed', label: 'Recessed floor' },
+  { id: 'none', label: 'No floor' },
+];
+
+const SIDES: { id: Side; label: string }[] = [
+  { id: 'left', label: 'Left of' },
+  { id: 'right', label: 'Right of' },
+  { id: 'behind', label: 'Behind' },
+  { id: 'front', label: 'In front of' },
+];
+
+/** Place this compartment touching another, or nudge it in 6" steps. */
+function PositionSection() {
+  const c = useActiveCompartment();
+  const all = useStore((s) => s.config.compartments);
+  const { editCompartment: edit } = useStore.getState();
+  const others = all.filter((x) => x.id !== c.id);
+  const [refId, setRefId] = useState(others[0]?.id ?? '');
+  const ref = others.find((x) => x.id === refId) ?? others[0];
+  const step = inToMm(6);
+  const nudge = (dx: number, dz: number) => edit((x) => ({ ...x, position: { x: x.position.x + dx, z: x.position.z + dz } }));
+  const first = all[0];
+  const rel = (v: number) => `${Math.round(mmToIn(v))}"`;
+
+  return (
+    <Section title="Position" hint="Seen from the front">
+      <div className="field">
+        <span className="field-label">Place touching</span>
+        <select className="custom-select" aria-label="Compartment to place beside" value={ref?.id} onChange={(e) => setRefId(e.target.value)}>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <div className="side-grid">
+          {SIDES.map((sd) => (
+            <button key={sd.id} type="button" className="btn btn-ghost" onClick={() => ref && edit((x) => ({ ...x, position: besidePosition(x, ref, sd.id) }))}>
+              {sd.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <span className="field-label">Nudge 6"</span>
+        <div className="nudge-pad" role="group" aria-label="Nudge the compartment">
+          <button type="button" aria-label="Move back" onClick={() => nudge(0, -step)}>↑</button>
+          <button type="button" aria-label="Move left" onClick={() => nudge(-step, 0)}>←</button>
+          <button type="button" aria-label="Move right" onClick={() => nudge(step, 0)}>→</button>
+          <button type="button" aria-label="Move forward" onClick={() => nudge(0, step)}>↓</button>
+        </div>
+        {c.id !== first.id && (
+          <p className="panel-note">
+            Centre is {rel(c.position.x - first.position.x)} right and {rel(c.position.z - first.position.z)} forward of {first.name}'s centre.
+          </p>
+        )}
+      </div>
+    </Section>
   );
 }

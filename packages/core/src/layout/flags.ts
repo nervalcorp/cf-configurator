@@ -23,7 +23,7 @@ export function flaggedParts(tree: ComponentTree, issues: Issue[]): Map<string, 
           (t.type === 'door' && 'doorId' in p && p.doorId === t.id) ||
           (t.type === 'wall' && p.kind === 'wall' && p.edgeIndex === t.edge) ||
           (t.type === 'floor' && p.kind === 'floor') ||
-          (t.type === 'part' && (p.id === t.id || p.id.startsWith(`${t.id}:`)));
+          (t.type === 'part' && (p.id === t.id || p.id.startsWith(`${t.id}:`) || p.id.startsWith(`${t.id}-`)));
         if (hit) mark(p, issue.message);
       }
     }

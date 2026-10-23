@@ -3,7 +3,6 @@ import {
   type DecalParams,
   type ExteriorFinish,
   FINISH_COLORS,
-  type FloorType,
   LIMITS,
   defaultDecal,
   formatInches,
@@ -14,13 +13,6 @@ import { useActiveCompartment, useStore } from '../store';
 import { Section, Slider } from '../shell/controls';
 import { activeBrand } from '../theme/brands';
 import { svgDataUrl } from '../viewer/textures';
-
-const FLOORS: { id: FloorType; label: string }[] = [
-  { id: 'standard', label: 'Standard floor (600 lb/sq ft, no rolling traffic)' },
-  { id: 'durafloor', label: 'DuraFloor (12,000 lb/sq ft, no rolling traffic)' },
-  { id: 'recessed', label: 'Recessed floor' },
-  { id: 'none', label: 'No floor' },
-];
 
 const MAX_MB = LIMITS.decal.maxBytes / (1024 * 1024);
 
@@ -159,21 +151,6 @@ export function FinishesTab() {
         </Section>
       )}
 
-      <Section title="Floor">
-        <select
-          className="custom-select"
-          aria-label="Floor"
-          value={f.floor}
-          onChange={(e) => setFinishes({ floor: e.target.value as FloorType })}
-        >
-          {FLOORS.filter((o) => !(c.temperature === 'freezer' && o.id === 'none')).map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        {c.temperature === 'freezer' && <p className="panel-note">Freezers always include an insulated floor.</p>}
-      </Section>
     </>
   );
 }

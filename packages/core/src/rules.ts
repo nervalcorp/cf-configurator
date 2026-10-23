@@ -8,6 +8,7 @@ import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
 import { CONTROL_HEIGHT, GLASS_MAX_ELEVATION, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
 import { controlBlocked, defaultControlPlacement, squareBlocker } from './layout/fixtures';
+import { overlappingCompartments } from './compartments';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
 import { doorMinRun, doorsClash, offsetRange } from './layout/doors';
@@ -202,5 +203,18 @@ export function validateCompartment(c: Compartment): Issue[] {
 }
 
 export function validate(config: Configuration): Issue[] {
-  return config.compartments.flatMap(validateCompartment);
+  const issues = config.compartments.flatMap(validateCompartment);
+  const name = (id: string) => config.compartments.find((c) => c.id === id)?.name ?? id;
+  for (const [a, b] of overlappingCompartments(config)) {
+    for (const [id, other] of [[a, b], [b, a]]) {
+      issues.push({
+        compartmentId: id,
+        tab: 'layout',
+        severity: 'error',
+        message: `${name(id)} overlaps ${name(other)}. Move one of them on the Layout step.`,
+        targets: [{ type: 'part', id: `${id}:wall` }, { type: 'floor' }],
+      });
+    }
+  }
+  return issues;
 }

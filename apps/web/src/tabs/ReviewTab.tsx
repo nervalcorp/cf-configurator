@@ -1,7 +1,20 @@
 import { useMemo, useState } from 'react';
-import { CHECKER_PLATE, DOOR_CLOSER_SKU, HANDLES, SHAPES, getControl, buildCompartment, formatFeetInches, formatInches, validate } from '@wic/core';
+import {
+  CHECKER_PLATE,
+  type Compartment,
+  type ComponentTree,
+  DOOR_CLOSER_SKU,
+  HANDLES,
+  RAMP,
+  SHAPES,
+  buildCompartment,
+  formatFeetInches,
+  formatInches,
+  getControl,
+  validate,
+} from '@wic/core';
 import { openConfiguration, saveConfiguration } from '../files';
-import { TABS, useActiveCompartment, useStore } from '../store';
+import { TABS, useStore } from '../store';
 import { Section } from '../shell/controls';
 
 const FINISH_NAMES: Record<string, string> = {
@@ -12,47 +25,47 @@ const FINISH_NAMES: Record<string, string> = {
 };
 const FLOOR_NAMES: Record<string, string> = { standard: 'Standard', durafloor: 'DuraFloor', recessed: 'Recessed', none: 'No floor' };
 
+interface Row {
+  name: string;
+  sku: string;
+  qty: number;
+}
+
+/** Products and add-ons in one compartment, grouped by model. */
+function partsOf(c: Compartment, tree: ComponentTree, into: Map<string, Row>) {
+  const add = (sku: string, name: string, qty = 1) => {
+    const k = `${name}|${sku}`;
+    const row = into.get(k);
+    if (row) row.qty += qty;
+    else into.set(k, { sku, name, qty });
+  };
+  tree.doors.forEach((d) => add(d.sku, d.tag.startsWith('G') ? 'Glass door unit' : 'Door'));
+  c.doors.forEach((d) => {
+    if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
+    if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
+  });
+  const ramps = tree.parts.filter((p) => p.kind === 'ramp').length;
+  if (ramps) add(RAMP.sku, RAMP.label, ramps);
+  const ctl = getControl(c.control.model);
+  if (ctl) add(ctl.sku, ctl.label);
+  if (c.accessories.checker.length) add('—', `${CHECKER_PLATE.label} (sq ft)`, c.accessories.checker.length);
+}
+
 export function ReviewTab() {
   const config = useStore((s) => s.config);
-  const { setUi, load } = useStore.getState();
-  const c = useActiveCompartment();
-  const tree = useMemo(() => buildCompartment(c, config.site.type), [c, config.site.type]);
+  const { setUi, load, setActive } = useStore.getState();
+  const trees = useMemo(() => config.compartments.map((c) => buildCompartment(c, config.site.type)), [config]);
   const issues = useMemo(() => validate(config), [config]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const tabLabel = (id: string) => TABS.find((t) => t.id === id)?.label ?? id;
+  const nameOf = (id: string) => config.compartments.find((c) => c.id === id)?.name ?? '';
+  const many = config.compartments.length > 1;
 
-  // Doors and the add-on hardware chosen for them, grouped by model.
-  const parts = (() => {
-    const map = new Map<string, { name: string; sku: string; qty: number }>();
-    const add = (sku: string, name: string) => {
-      const row = map.get(sku);
-      if (row) row.qty += 1;
-      else map.set(sku, { sku, name, qty: 1 });
-    };
-    tree.doors.forEach((d) => add(d.sku, d.tag.startsWith('G') ? 'Glass door unit' : 'Door'));
-    c.doors.forEach((d) => {
-      if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
-      if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
-    });
-    const ctl = getControl(c.control.model);
-    if (ctl) add(ctl.sku, ctl.label);
-    const plates = c.accessories.checker.length;
-    if (plates) map.set('checker', { sku: '—', name: `${CHECKER_PLATE.label} (sq ft)`, qty: plates });
+  const parts = useMemo(() => {
+    const map = new Map<string, Row>();
+    config.compartments.forEach((c, i) => partsOf(c, trees[i], map));
     return [...map.values()];
-  })();
-
-  const rows: [string, string][] = [
-    ['Type', `${config.site.type === 'indoor' ? 'Indoor' : 'Outdoor'} ${c.temperature}`],
-    ['Shape', SHAPES.find((s) => s.id === c.shape)?.label ?? c.shape],
-    ['Outside size', `${formatFeetInches(c.boxW)} × ${formatFeetInches(c.boxD)}`],
-    ['Wall panels', `${formatFeetInches(c.height)} high, ${formatInches(c.wallThickness)} PIR`],
-    ['Overall height', `${formatFeetInches(tree.overall.height)} with floor and ceiling`],
-    ['Exterior', FINISH_NAMES[c.finishes.exterior]],
-    ['Floor', FLOOR_NAMES[c.finishes.floor]],
-    ['Doors', `${c.doors.filter((d) => d.family !== 'glass').length || 'None'}`],
-    ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
-    ['Ramp', c.accessories.ramp === 'none' ? 'None' : c.accessories.ramp === 'interior' ? 'Interior' : 'Exterior'],
-  ];
+  }, [config, trees]);
 
   return (
     <>
@@ -61,8 +74,18 @@ export function ReviewTab() {
           <ul className="issue-list">
             {issues.map((i, k) => (
               <li key={k} className={`issue issue-${i.severity}`}>
-                <span>{i.message}</span>
-                <button type="button" className="issue-fix" onClick={() => setUi(i.ref ? { tab: i.tab, selectedDoor: i.ref } : { tab: i.tab })}>
+                <span>
+                  {many && <strong>{nameOf(i.compartmentId)}: </strong>}
+                  {i.message}
+                </span>
+                <button
+                  type="button"
+                  className="issue-fix"
+                  onClick={() => {
+                    setActive(i.compartmentId);
+                    setUi(i.ref ? { tab: i.tab, selectedDoor: i.ref } : { tab: i.tab });
+                  }}
+                >
                   Go to {tabLabel(i.tab)}
                 </button>
               </li>
@@ -75,48 +98,12 @@ export function ReviewTab() {
         </Section>
       )}
 
-      <Section title="Summary">
-        <dl className="summary">
-          {rows.map(([k, v]) => (
-            <div key={k} className="summary-row">
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </Section>
-
-      <Section title="Walls">
-        <table className="part-table">
-          <thead>
-            <tr>
-              <th scope="col">Wall</th>
-              <th scope="col">Outside</th>
-              <th scope="col">Inside</th>
-              <th scope="col">Height</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tree.walls.map((w) => (
-              <tr key={w.letter}>
-                <td>
-                  {w.letter}
-                  {w.doors > 0 && <span className="part-tag">{w.doors === 1 ? 'door' : `${w.doors} doors`}</span>}
-                </td>
-                <td>{formatInches(w.length)}</td>
-                <td>{formatInches(w.insideLength)}</td>
-                <td>{formatInches(w.height)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="panel-note">
-          {tree.parts.filter((p) => p.kind === 'post').length} corner joints. A full part list with part numbers comes with the BOM step.
-        </p>
-      </Section>
+      {config.compartments.map((c, i) => (
+        <CompartmentSummary key={c.id} c={c} tree={trees[i]} site={config.site.type} />
+      ))}
 
       {parts.length > 0 && (
-        <Section title="Products and hardware" hint="ICC models, under audit">
+        <Section title={many ? 'Products and hardware, all compartments' : 'Products and hardware'} hint="ICC models, under audit">
           <table className="part-table">
             <thead>
               <tr>
@@ -158,11 +145,68 @@ export function ReviewTab() {
             Open a file
           </button>
         </div>
-        {loadError && <p className="panel-error" role="alert">{loadError}</p>}
+        {loadError && (
+          <p className="panel-error" role="alert">
+            {loadError}
+          </p>
+        )}
         <button type="button" className="btn btn-primary btn-block" disabled title="Quote requests are not connected yet">
           Request quote
         </button>
       </Section>
     </>
+  );
+}
+
+function CompartmentSummary({ c, tree, site }: { c: Compartment; tree: ComponentTree; site: string }) {
+  const ramps = tree.parts.filter((p) => p.kind === 'ramp').length;
+  const ctl = getControl(c.control.model);
+  const rows: [string, string][] = [
+    ['Type', `${site === 'indoor' ? 'Indoor' : 'Outdoor'} ${c.temperature}`],
+    ['Shape', SHAPES.find((s) => s.id === c.shape)?.label ?? c.shape],
+    ['Outside size', `${formatFeetInches(c.boxW)} × ${formatFeetInches(c.boxD)}`],
+    ['Wall panels', `${formatFeetInches(c.height)} high, ${formatInches(c.wallThickness)} PIR`],
+    ['Overall height', `${formatFeetInches(tree.overall.height)} with floor and ceiling`],
+    ['Exterior', FINISH_NAMES[c.finishes.exterior]],
+    ['Floor', FLOOR_NAMES[c.finishes.floor]],
+    ['Doors', `${c.doors.filter((d) => d.family !== 'glass').length || 'None'}`],
+    ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
+    ['Ramps', ramps ? `${ramps}` : 'None'],
+    ['Controller', ctl ? `${ctl.label} ${ctl.sku}` : 'None'],
+  ];
+  return (
+    <Section title={c.name}>
+      <dl className="summary">
+        {rows.map(([k, v]) => (
+          <div key={k} className="summary-row">
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <table className="part-table walls-table">
+        <thead>
+          <tr>
+            <th scope="col">Wall</th>
+            <th scope="col">Outside</th>
+            <th scope="col">Inside</th>
+            <th scope="col">Height</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tree.walls.map((w) => (
+            <tr key={w.letter}>
+              <td>
+                {w.letter}
+                {w.doors > 0 && <span className="part-tag">{w.doors === 1 ? '1 opening' : `${w.doors} openings`}</span>}
+              </td>
+              <td>{formatInches(w.length)}</td>
+              <td>{formatInches(w.insideLength)}</td>
+              <td>{formatInches(w.height)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Section>
   );
 }

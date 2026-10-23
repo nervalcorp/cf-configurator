@@ -22,6 +22,7 @@ export function Footer() {
           onClick={() => {
             // Validation gate: send the user to the first tab with a problem.
             const first = validate(config).find((i) => i.severity === 'error');
+            if (first) useStore.getState().setActive(first.compartmentId);
             setUi({ tab: first ? first.tab : 'review', panelOpen: true });
           }}
         >

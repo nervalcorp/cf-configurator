@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ComponentTree, Compartment, ExteriorFinish } from '@wic/core';
 import { activeBrand } from '../theme/brands';
-import { Materials } from './materials';
+import { Materials, Skin } from './materials';
 import { badgeTexture, checkerTexture, decalTexture, loadImage, svgDataUrl, tc1000Face, transparentLogoTexture, tsc2000Face, whiteLogo } from './textures';
 import { type Built, buildMeshes, disposeTree } from './buildMeshes';
 
@@ -26,7 +26,11 @@ export class SceneController {
   private key = new THREE.DirectionalLight(0xffffff, 2.2);
   private mats = new Materials();
   private model = new THREE.Group();
-  private built: Built | null = null;
+  /** One built group per compartment, keyed by compartment id. */
+  private built = new Map<string, Built & { group: THREE.Group }>();
+  private skins = new Map<string, Skin>();
+  private showDims = true;
+  private center = new THREE.Vector3();
   private size = new THREE.Vector3(3.8, 2.5, 3.8);
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
@@ -38,9 +42,6 @@ export class SceneController {
   private resizeObs: ResizeObserver;
   private onHover: (hover: Hover | null, x: number, y: number) => void;
   private badgeKey: string | null = null;
-  private decalKey: string | null = null;
-  private decalTex: THREE.Texture | null = null;
-  private finish: { finish: ExteriorFinish; color: string } = { finish: 'white', color: '#f0f0f0' };
   private axisCtx: CanvasRenderingContext2D | null;
 
   constructor(
@@ -109,19 +110,55 @@ export class SceneController {
     this.loop();
   }
 
-  update(tree: ComponentTree, c: Compartment, flags: Map<string, string[]>) {
-    this.finish = { finish: c.finishes.exterior, color: c.finishes.exteriorColor };
-    this.applyDecal(c);
+  /**
+   * Rebuild every compartment. Each entry is drawn at its site position with
+   * its own outside finish; flagged parts get the red overlay.
+   */
+  update(entries: { tree: ComponentTree; comp: Compartment; flags: Map<string, string[]> }[]) {
     this.clearHover();
-    const showDims = this.built?.dims.visible ?? true;
-    if (this.built) {
-      this.model.remove(this.built.root);
-      disposeTree(this.built.root, this.keepSet());
+    const keep = this.keepSet();
+    for (const [id, b] of this.built) {
+      this.model.remove(b.group);
+      disposeTree(b.group, keep);
+      this.built.delete(id);
     }
-    this.built = buildMeshes(tree, this.mats, flags);
-    this.built.dims.visible = showDims;
-    this.model.add(this.built.root);
-    this.size.set(tree.overall.width * MM, tree.overall.height * MM, tree.overall.depth * MM);
+    for (const [id, skin] of this.skins) {
+      if (!entries.some((e) => e.comp.id === id)) {
+        skin.dispose();
+        this.skins.delete(id);
+      }
+    }
+    const many = entries.length > 1;
+    const box = new THREE.Box3();
+    for (const { tree, comp, flags } of entries) {
+      let skin = this.skins.get(comp.id);
+      if (!skin) {
+        skin = new Skin();
+        this.skins.set(comp.id, skin);
+      }
+      this.applyDecal(comp, skin);
+      const built = buildMeshes(tree, this.mats, skin, flags);
+      built.dims.visible = this.showDims;
+      const group = new THREE.Group();
+      group.position.set(comp.position.x, 0, comp.position.z);
+      group.add(built.root);
+      if (many) {
+        group.traverse((o) => {
+          if (o.userData.label) o.userData.label = `${comp.name} · ${o.userData.label}`;
+        });
+      }
+      this.model.add(group);
+      this.built.set(comp.id, { ...built, group });
+      const { width, depth, height } = tree.overall;
+      box.expandByPoint(new THREE.Vector3((comp.position.x - width / 2) * MM, 0, (comp.position.z - depth / 2) * MM));
+      box.expandByPoint(new THREE.Vector3((comp.position.x + width / 2) * MM, height * MM, (comp.position.z + depth / 2) * MM));
+    }
+    if (!box.isEmpty()) {
+      box.getSize(this.size);
+      box.getCenter(this.center);
+    }
+    this.mats.setWireframe(this.wireframe);
+    for (const sk of this.skins.values()) for (const m of sk.materials()) (m as THREE.MeshStandardMaterial).wireframe = this.wireframe;
     this.placeKeyLight();
   }
 
@@ -168,44 +205,50 @@ export class SceneController {
 
   /** Default decal image when the configuration has no upload. */
   defaultDecal: string | null = null;
+  private wireframe = false;
 
-  private applyDecal(c: Compartment) {
+  private applyDecal(c: Compartment, skin: Skin) {
     const d = c.finishes.decal;
     const useDecal = c.finishes.exterior === 'decal';
     const raw = d.image ?? this.defaultDecal;
     const src = raw && raw.trim().startsWith('<') ? svgDataUrl(raw) : raw;
     const key = useDecal && src ? `${src.length}:${src.slice(-64)}|${d.background}` : null;
+    const finish = c.finishes.exterior as ExteriorFinish;
+    const color = c.finishes.exteriorColor;
     const place = (tex: THREE.Texture | null) => {
       if (tex) {
         // Wall UVs are millimetres along the wall, so one repeat = one tile.
         tex.repeat.set(1 / d.tile, 1 / d.tile);
         tex.rotation = (d.angle * Math.PI) / 180;
       }
-      this.mats.setFinish(this.finish.finish, this.finish.color, tex);
+      skin.setFinish(finish, color, tex);
     };
-    if (key === this.decalKey) return place(this.decalTex);
-    this.decalKey = key;
+    if (key === skin.decalKey) return place(skin.decalTex);
+    skin.decalKey = key;
     if (!key || !src) {
-      this.decalTex?.dispose();
-      this.decalTex = null;
+      skin.decalTex?.dispose();
+      skin.decalTex = null;
       return place(null);
     }
-    place(this.decalTex); // keep the old tiles until the new ones load
+    place(skin.decalTex); // keep the old tiles until the new ones load
     loadImage(src)
       .then((img) => {
-        if (this.decalKey !== key) return;
-        this.decalTex?.dispose();
-        this.decalTex = decalTexture(img, d.background);
-        place(this.decalTex);
+        if (skin.decalKey !== key) return;
+        skin.decalTex?.dispose();
+        skin.decalTex = decalTexture(img, d.background);
+        place(skin.decalTex);
       })
       .catch(() => place(null));
   }
 
   setDims(on: boolean) {
-    if (this.built) this.built.dims.visible = on;
+    this.showDims = on;
+    for (const b of this.built.values()) b.dims.visible = on;
   }
   setWireframe(on: boolean) {
+    this.wireframe = on;
     this.mats.setWireframe(on);
+    for (const sk of this.skins.values()) for (const m of sk.materials()) (m as THREE.MeshStandardMaterial).wireframe = on;
   }
   setAutoRotate(on: boolean) {
     this.controls.autoRotate = on;
@@ -218,8 +261,10 @@ export class SceneController {
   /** Frame the whole walk-in from the original three-quarter angle. */
   resetView() {
     const span = Math.max(this.size.x, this.size.z, this.size.y);
-    const dist = span * 2.4 + 2.5;
-    const target = new THREE.Vector3(0, this.size.y * 0.42, 0);
+    // Pull back on tall, narrow viewports (phones) so the whole site still fits.
+    const narrow = Math.max(1, 1.15 / Math.max(this.camera.aspect, 0.3));
+    const dist = (span * 2.4 + 2.5) * narrow;
+    const target = new THREE.Vector3(this.center.x, this.size.y * 0.42, this.center.z);
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(DEFAULT_DIR, dist);
     this.controls.update();
@@ -247,8 +292,8 @@ export class SceneController {
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointer);
     this.renderer.domElement.removeEventListener('pointerleave', this.clearHover);
     this.controls.dispose();
-    if (this.built) disposeTree(this.built.root, this.keepSet());
-    this.decalTex?.dispose();
+    for (const b of this.built.values()) disposeTree(b.group, this.keepSet());
+    for (const sk of this.skins.values()) sk.dispose();
     this.mats.badgeFace.map?.dispose();
     this.mats.logoWhite.map?.dispose();
     this.mats.checker.map?.dispose();
@@ -267,7 +312,11 @@ export class SceneController {
 
   private placeKeyLight() {
     const r = Math.max(this.size.x, this.size.z) * 1.4 + 4;
-    this.key.position.set(Math.cos(this.lightAngle) * r, r * 1.1, Math.sin(this.lightAngle) * r);
+    this.key.position.set(this.center.x + Math.cos(this.lightAngle) * r, r * 1.1, this.center.z + Math.sin(this.lightAngle) * r);
+    this.key.target.position.set(this.center.x, 0, this.center.z);
+    const half = Math.max(15, Math.max(this.size.x, this.size.z));
+    Object.assign(this.key.shadow.camera, { left: -half, right: half, top: half, bottom: -half });
+    this.key.shadow.camera.updateProjectionMatrix();
   }
 
   private resize() {
@@ -280,11 +329,12 @@ export class SceneController {
   }
 
   private handlePointer = (e: PointerEvent) => {
-    if (e.buttons || !this.built) return this.clearHover();
+    if (e.buttons || !this.built.size) return this.clearHover();
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hit = this.raycaster.intersectObjects(this.built.pickable, false)[0];
+    const pickable = [...this.built.values()].flatMap((b) => b.pickable);
+    const hit = this.raycaster.intersectObjects(pickable, false)[0];
     const mesh = (hit?.object as THREE.Mesh | undefined) ?? null;
     if (mesh !== this.hovered) {
       this.restoreHovered();

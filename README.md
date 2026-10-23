@@ -47,6 +47,7 @@ apps/web          React + Zustand + Three.js app
 - **The rules engine owns constraints.** The UI may hide options, but `normalize()` is what guarantees a freezer has a floor or a notch stays in range.
 - **Edits are committed or transient.** Drags and slider moves update live as transient edits and commit once on release, so each gesture is one undo step.
 - **Configurations are versioned.** Bump `SCHEMA_VERSION` on breaking changes and teach `migrate()` to read the old shape. v1 → v2 turned the single front `door` into a `doors` list.
+- **The camera only moves when the user moves it,** presses reset, or adds or removes a compartment. Changing settings never reframes the view.
 - **Height means wall panel height.** The ceiling panel sits on top, so the overall height is floor + panels + ceiling.
 - **Walls are lettered A, B, C… counter-clockwise on the plan, starting with A at the front wall.** Joint 1 is the left end of wall A.
 - **Anything placed on a wall goes through `wallFrames()`**: an origin at the inside face of the wall's left end (seen from outside), a `u` axis along the wall and an outward normal `n`. Doors use it now; glass doors, shelving and lights will too.
@@ -69,6 +70,14 @@ A compartment holds any number of doors, each on any wall. Each door records its
 Man doors are the same 34" × 78" leaf whichever way they are mounted. Semi-buried doors stand proud of the wall on a 4.75" frame (20 mm proud) and lap 1.5" over the opening behind, leaving 3.25" of frame showing; the hinge bases and latch strike sit in the middle of that strip. Full-buried doors sit flush in a 2" frame with a gasket line around the leaf. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
 
 The roll-up opening runs the full 120" panel height; its drum housing sits above the walls and is not counted against the panel height. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
+
+## Compartments
+
+A configuration holds one or more compartments ("Compartment 1", "Compartment 2"…; rename them on the Layout step). Each keeps its own shape, size, finish, floor, doors, glass doors, controller and accessories; the site type (indoor or outdoor) is shared. The bar over the 3D view switches between them and has **Add Compartment** and **Duplicate**. New and duplicated compartments are placed touching the right-hand side of the site, fronts in line; on the Layout step a compartment can be placed touching any side of another, or nudged in 6" steps. A position is the centre of the compartment's footprint, so resizing grows both ways. Overlapping compartments are flagged on both. The floor plan shows the compartment being edited.
+
+## Floors and ramps
+
+Floor is chosen on the Layout step: Standard, DuraFloor, Recessed (a concrete slab running 4" past the walls, flush with the room floor) or none (freezers always have a floor). With Standard or DuraFloor, the Exterior ramp option puts an ICC-R3436 aluminum ramp (34" × 36") outside every door close to 34" wide (man doors, single traffic doors), rising from the ground to the top of the floor.
 
 ## Glass display doors
 

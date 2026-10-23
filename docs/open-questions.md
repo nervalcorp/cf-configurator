@@ -6,6 +6,13 @@
 - **Not in the ICC catalog.** Jamb guards, kickplates, pressure-relief vents and strip curtains have no model yet, so they are not offered.
 - **Hinge kits.** ICC-1238SL/SR hinges are not added to the part list; assumed included with the door.
 
+## Compartments and ramps
+
+- **Interior ramp.** Withdrawn for now; saved drafts with it become the exterior ramp. Will it come back?
+- **Which doors get a ramp.** Man doors and single traffic doors (within 2" of the ramp's 34" width). Pallet, sliding, roll-up and double traffic doors get none. Is a wider ramp coming?
+- **Docking compartments.** Compartments can touch but each keeps its own walls. Sharing a wall, and a pass-through door between compartments, are not done yet.
+- **Resizing next to a neighbour.** A compartment grows from its centre, so making one wider can push it into the next and flag both. Should it grow away from its neighbours instead?
+
 ## Glass doors
 
 - **Mounting height.** Units sit on the floor (frame bottom at floor level). Are they raised on a curb or base in practice?
@@ -31,6 +38,9 @@
 
 ## Resolved
 
+- **Mobile framing** (2026-10-23). The camera pulls back on narrow screens so the whole site fits.
+- **Camera on site type change** (2026-10-23). Switching indoor/outdoor no longer moves the view.
+
 - **Glass hinge pattern** (2026-10-23). The white squares on the frame are the hinges; 2-door from the centre, 3-door left, right, right.
 - **Semi-buried frame** (2026-10-23). 4.75" wide, hinges and strike mounted in the middle of the exposed frame.
 
@@ -49,4 +59,4 @@
 
 ## Later
 
-- **Mobile framing.** Camera frames for a wide viewport and crops on phones. Planned with the Phase 3 bottom sheet.
+- **Mobile bottom sheet.** The options panel still slides over the view on phones; a bottom sheet is planned for Phase 3.
