@@ -14,11 +14,12 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, RAMP, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
 import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
+import { BAY_PITCH, facingVector, gravityKey, shelfHeights, shelvingSize } from './shelving';
 import { GASKET, SEMI_FRAME, SEMI_OVERLAP, doorOpening } from './doors';
 
 export type Vec3 = readonly [number, number, number];
@@ -50,7 +51,15 @@ export type BoxKind =
   | 'logo'
   | 'plate'
   | 'control-body'
-  | 'screen';
+  | 'screen'
+  | 'shelf-post'
+  | 'shelf-wire'
+  | 'shelf-brace'
+  | 'shelf-bar'
+  | 'shelf-bracket'
+  | 'price-tag'
+  | 'gravity-bed'
+  | 'gravity-divider';
 
 export type Face = '+x' | '-x' | '+z' | '-z';
 
@@ -62,6 +71,8 @@ export interface BoxPart extends Base {
   /** Faces that are on the outside of the walk-in (corner posts). */
   exteriorFaces?: Face[];
   rotationY?: number;
+  /** Tilt about the part's own x axis, applied after rotationY (gravity trays, braces). */
+  rotationX?: number;
   /** Colour override (traffic-door finish, handle finish). */
   color?: string;
   /** Show the brand logo on the front (local +Z) face. */
@@ -371,6 +382,9 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
       wallRect: [q.col * S, q.row * S, (q.col + 1) * S, (q.row + 1) * S],
     });
   }
+
+  // ── Shelving inside ──
+  for (const u of c.accessories.shelving) parts.push(...shelvingParts(c, u, b, fTop));
 
   // ── Controller ──
   const ctl = getControl(c.control.model);
@@ -785,6 +799,114 @@ function controlParts(c: Compartment, def: NonNullable<ReturnType<typeof getCont
   } else {
     out.push({ kind: 'control-body', id: id('bezel'), center: at(0, 0, T + D / 2), size: [W, H, D], rotationY: rot, color: '#2b2e33', label });
     out.push({ kind: 'screen', id: id('face'), center: at(0, 0, T + D + 0.5), size: [W - 8, H - 8, 1], rotationY: rot, screen: 'TC1000', label });
+  }
+  return out;
+}
+
+const STEEL = '#1b1c1e';
+
+/**
+ * Heavy duty shelving, after the ICC product sheet: perforated posts with foot
+ * plates and retainer brackets, wire shelves (a flat panel with a mesh
+ * texture), a price tag strip on each shelf, diagonal side braces, stabilizer
+ * bars along the top, and gravity flow trays where chosen.
+ * Local frame: x along the run, z toward the shelves' front, y up.
+ */
+function shelvingParts(c: Compartment, u: Compartment['accessories']['shelving'][number], b: { cx: number; cy: number }, fTop: number): Part[] {
+  const out: Part[] = [];
+  const f = facingVector(u.facing);
+  const a: Vec2 = [f[1], -f[0]];
+  const rot = Math.atan2(f[0], f[1]);
+  const { width: W, depth: D } = shelvingSize(u);
+  const P = SHELVING.post;
+  const SW = SHELVING.shelfWidth;
+  const SD = D - P;
+  const id = (s: string) => `${c.id}:shelf-${u.id}:${s}`;
+  const label = `Shelving ${u.id.replace('sh', 'S')} · ${SHELVING.sku}`;
+  const at = (lx: number, lz: number, y: number): Vec3 => [u.x - b.cx + a[0] * lx + f[0] * lz, fTop + y, u.y - b.cy + a[1] * lx + f[1] * lz];
+  const box = (kind: BoxKind, name: string, lx: number, lz: number, y: number, size: Vec3, extra: Partial<BoxPart> = {}): BoxPart => ({
+    kind,
+    id: id(name),
+    center: at(lx, lz, y),
+    size,
+    rotationY: rot,
+    color: STEEL,
+    label,
+    ...extra,
+  });
+
+  const H = u.postHeight;
+  const postX = (i: number) => -W / 2 + P / 2 + i * BAY_PITCH;
+  const zFront = D / 2 - P / 2;
+  // Posts, foot plates, retainer brackets
+  for (let i = 0; i <= u.bays; i++) {
+    for (const [side, z] of [['f', zFront], ['b', -zFront]] as const) {
+      const x = postX(i);
+      out.push(box('shelf-post', `post-${i}${side}`, x, z, H / 2, [P, H, P]));
+      out.push(box('shelf-bracket', `foot-${i}${side}`, x, z + (side === 'f' ? 12 : -12), 2, [P + 26, 4, P + 40]));
+      out.push(box('shelf-bracket', `retainer-${i}${side}`, x, z, H - 18, [P + 10, 36, P + 10], { label: 'Post retainer bracket' }));
+    }
+  }
+  // Stabilizer bars along the top, front and back
+  out.push(box('shelf-bar', 'stabilizer-f', 0, zFront, H - 70, [W - P, 12, 12], { label: 'Stabilizer bar' }));
+  out.push(box('shelf-bar', 'stabilizer-b', 0, -zFront, H - 70, [W - P, 12, 12], { label: 'Stabilizer bar' }));
+
+  const heights = shelfHeights(u);
+  // Diagonal side braces: lower half and upper half, alternating direction
+  const lowMid = heights[Math.floor((heights.length - 1) / 2)];
+  const spans: [number, number, number][] = [
+    [heights[0] + 40, lowMid - 40, 1],
+    [lowMid + 40, heights[heights.length - 1] - 40, -1],
+  ];
+  for (let i = 0; i <= u.bays; i++) {
+    spans.forEach(([y1, y2, dir], k) => {
+      if (y2 - y1 < 80) return;
+      const dz = (zFront - P / 2) * 2 * dir;
+      const dy = y2 - y1;
+      const len = Math.hypot(dz, dy);
+      out.push(box('shelf-brace', `brace-${i}-${k}`, postX(i), 0, (y1 + y2) / 2, [16, len, 10], { rotationX: Math.atan2(dz, dy), label: 'Side brace' }));
+    });
+  }
+
+  // Shelves
+  const tilt = SHELVING.gravityTilt;
+  const cos = Math.cos(tilt);
+  const sin = Math.sin(tilt);
+  for (let j = 0; j < u.bays; j++) {
+    const cx = -W / 2 + P + SW / 2 + j * BAY_PITCH;
+    heights.forEach((y, k) => {
+      const gravity = u.gravity.includes(gravityKey(j, k));
+      const n = `${j}-${k}`;
+      if (!gravity) {
+        out.push(box('shelf-wire', `shelf-${n}`, cx, 0, y, [SW, 10, SD], { color: undefined }));
+        out.push(box('price-tag', `tag-${n}`, cx, SD / 2 + 3, y - 14, [SW, 32, 3], { color: undefined, label: 'Price tag holder' }));
+        return;
+      }
+      // Gravity flow: the shelf tips down toward the front; bed, lane dividers and a front stop ride on it.
+      const tilted = (h: number, z: number): [number, number] => [y + h * cos - z * sin, h * sin + z * cos];
+      const glabel = `${SHELVING.gravityLabel} (${label})`;
+      out.push(box('shelf-wire', `shelf-${n}`, cx, 0, y, [SW, 10, SD], { color: undefined, rotationX: tilt, label: glabel }));
+      {
+        const [yy, zz] = tilted(10, 0);
+        out.push(box('gravity-bed', `bed-${n}`, cx, zz, yy, [SW - 16, 8, SD - 10], { color: '#2a2d30', rotationX: tilt, label: glabel }));
+      }
+      // Lane dividers are wire loops: a rod running front to back and an upright at the front.
+      const lanes = Math.round((SW - 16) / inToMm(3.5));
+      for (let l = 0; l <= lanes; l++) {
+        const lx = cx - (SW - 16) / 2 + ((SW - 16) * l) / lanes;
+        const [yy, zz] = tilted(58, -20);
+        out.push(box('gravity-divider', `div-${n}-${l}`, lx, zz, yy, [4, 4, SD - 70], { color: '#d6dadd', rotationX: tilt, label: glabel }));
+        const [y2, z2] = tilted(34, SD / 2 - 55);
+        out.push(box('gravity-divider', `div-up-${n}-${l}`, lx, z2, y2, [4, 48, 4], { color: '#d6dadd', rotationX: tilt, label: glabel }));
+      }
+      {
+        const [yy, zz] = tilted(36, SD / 2 - 8);
+        out.push(box('gravity-divider', `stop-${n}`, cx, zz, yy, [SW - 16, 6, 6], { color: '#d6dadd', rotationX: tilt, label: glabel }));
+        const [y2, z2] = tilted(14, SD / 2 - 8);
+        out.push(box('gravity-divider', `stop-low-${n}`, cx, z2, y2, [SW - 16, 6, 6], { color: '#d6dadd', rotationX: tilt, label: glabel }));
+      }
+      out.push(box('price-tag', `tag-${n}`, cx, SD / 2 + 3, y - 14 - (SD / 2) * sin, [SW, 32, 3], { color: undefined, label: 'Price tag holder' }));
+    });
   }
   return out;
 }

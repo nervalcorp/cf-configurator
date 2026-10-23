@@ -6,6 +6,7 @@ import {
   DOOR_CLOSER_SKU,
   HANDLES,
   RAMP,
+  SHELVING,
   SHAPES,
   buildCompartment,
   formatFeetInches,
@@ -49,6 +50,10 @@ function partsOf(c: Compartment, tree: ComponentTree, into: Map<string, Row>) {
   const ctl = getControl(c.control.model);
   if (ctl) add(ctl.sku, ctl.label);
   if (c.accessories.checker.length) add('—', `${CHECKER_PLATE.label} (sq ft)`, c.accessories.checker.length);
+  const bays = c.accessories.shelving.reduce((n, u) => n + u.bays, 0);
+  if (bays) add(SHELVING.sku, SHELVING.label, bays);
+  const trays = c.accessories.shelving.reduce((n, u) => n + u.gravity.length, 0);
+  if (trays) add('—', SHELVING.gravityLabel, trays);
 }
 
 export function ReviewTab() {
@@ -173,6 +178,7 @@ function CompartmentSummary({ c, tree, site }: { c: Compartment; tree: Component
     ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
     ['Ramps', ramps ? `${ramps}` : 'None'],
     ['Controller', ctl ? `${ctl.label} ${ctl.sku}` : 'None'],
+    ['Shelving', c.accessories.shelving.length ? `${c.accessories.shelving.reduce((n, u) => n + u.bays, 0)} bays` : 'None'],
   ];
   return (
     <Section title={c.name}>

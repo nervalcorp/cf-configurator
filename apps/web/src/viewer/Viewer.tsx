@@ -13,6 +13,7 @@ export function Viewer() {
 
   const site = useStore((s) => s.config.site.type);
   const config = useStore((s) => s.config);
+  const activeId = useStore((s) => s.ui.active);
   const entries = useMemo(() => {
     const issues = validate(config);
     return config.compartments.map((comp) => {
@@ -29,7 +30,7 @@ export function Viewer() {
     c.setLogo(activeBrand.logo);
     c.defaultDecal = activeBrand.logo;
     ctrl.current = c;
-    viewerApi.current = { resetView: () => c.resetView(), screenshot: () => c.screenshot() };
+    viewerApi.current = { resetView: () => c.resetView(), screenshot: (scale, dpi) => void c.screenshot(scale, dpi) };
     if (new URLSearchParams(location.search).has('debug')) {
       (window as unknown as { __wic: unknown }).__wic = { viewer: c, store: useStore };
     }
@@ -47,12 +48,12 @@ export function Viewer() {
   useEffect(() => {
     const c = ctrl.current;
     if (!c) return;
-    c.update(entries);
+    c.update(entries, activeId);
     if (framedCount.current !== entries.length) {
       framedCount.current = entries.length;
       c.resetView();
     }
-  }, [entries]);
+  }, [entries, activeId]);
 
   useEffect(() => ctrl.current?.setDims(showDims), [showDims]);
   useEffect(() => ctrl.current?.setWireframe(wireframe), [wireframe]);

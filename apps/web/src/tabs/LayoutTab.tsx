@@ -15,20 +15,7 @@ export function LayoutTab() {
   return (
     <>
       <Section title="Compartment">
-        <label className="field">
-          <span className="field-label">Name</span>
-          <input
-            className="text-input"
-            type="text"
-            value={c.name}
-            maxLength={40}
-            onChange={(e) => edit((x) => ({ ...x, name: e.target.value }), { transient: true })}
-            onBlur={(e) => {
-              if (!e.target.value.trim()) edit((x) => ({ ...x, name: `Compartment ${all.indexOf(c) + 1}` }));
-              commit();
-            }}
-          />
-        </label>
+        <NameField key={c.id} />
         {all.length > 1 && (
           <button type="button" className="btn-link danger" onClick={() => removeCompartment(c.id)}>
             Remove {c.name}
@@ -142,6 +129,42 @@ export function LayoutTab() {
         {c.finishes.floor === 'recessed' && <p className="panel-note">Sits in a recessed concrete slab, flush with the room floor. No ramp needed.</p>}
       </Section>
     </>
+  );
+}
+
+/**
+ * Compartment name. Saved on Enter or when the field loses focus; a name
+ * another compartment already uses is refused with a note, so names never repeat.
+ */
+function NameField() {
+  const c = useActiveCompartment();
+  const all = useStore((s) => s.config.compartments);
+  const { editCompartment: edit } = useStore.getState();
+  const [draft, setDraft] = useState(c.name);
+  const clash = all.some((o) => o.id !== c.id && o.name.trim().toLowerCase() === draft.trim().toLowerCase());
+  const save = () => {
+    const name = draft.trim();
+    if (!name || clash) return setDraft(c.name);
+    if (name !== c.name) edit((x) => ({ ...x, name }));
+  };
+  return (
+    <label className="field">
+      <span className="field-label">Name</span>
+      <input
+        className="text-input"
+        type="text"
+        value={draft}
+        maxLength={40}
+        aria-invalid={clash}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') setDraft(c.name);
+        }}
+      />
+      {clash && <span className="panel-error">Another compartment is already called that.</span>}
+    </label>
   );
 }
 

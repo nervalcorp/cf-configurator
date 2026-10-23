@@ -82,7 +82,7 @@ describe('migrate', () => {
     const v1 = { schema: 1, site: { type: 'indoor' }, compartments: [{ ...defaultCompartment(), doors: undefined, door: { width: 863.6, offset: 400, hinge: 'left' } }] };
     const cfg = normalize(migrate(v1));
     const d = cfg.compartments[0].doors[0];
-    expect(cfg.schema).toBe(5);
+    expect(cfg.schema).toBe(6);
     expect([d.wall, d.hinge, d.family]).toEqual([2, 'left', 'man']);
     expect(d.offset).toBeCloseTo(400, 6);
   });

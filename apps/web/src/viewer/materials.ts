@@ -28,6 +28,13 @@ export class Materials {
   screenTC = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.05 });
   /** Controller cable and gland. */
   cable = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.6 });
+  /** Shelving: powder-coated black steel, wire shelves (mesh texture with cut-outs), clear price tag strips. */
+  shelfSteel = new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.55, metalness: 0.25 });
+  wireShelf = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.2, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide });
+  priceTag = new THREE.MeshStandardMaterial({ color: 0xe8f0f4, roughness: 0.2, transparent: true, opacity: 0.55 });
+  /** Floor glow under the compartment being edited. */
+  glow = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.55, depthWrite: false });
+  glowSoft = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.16, depthWrite: false });
   /** Red tint over parts with a problem. */
   flag = new THREE.MeshBasicMaterial({
     color: 0xff1a1a,
@@ -98,12 +105,12 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.concrete, this.rampBody, this.rampGrit, this.rampSlot, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.concrete, this.rampBody, this.rampGrit, this.rampSlot, this.shelfSteel, this.wireShelf, this.priceTag, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
   shared(): THREE.Material[] {
-    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag];
+    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag, this.glow, this.glowSoft];
   }
 
   dispose() {

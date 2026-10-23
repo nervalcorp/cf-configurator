@@ -6,8 +6,9 @@
  */
 import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
-import { CONTROL_HEIGHT, GLASS_MAX_ELEVATION, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
+import { CONTROL_HEIGHT, GLASS_MAX_ELEVATION, SHELVING, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
 import { controlBlocked, defaultControlPlacement, squareBlocker } from './layout/fixtures';
+import { shelvingBlocker } from './layout/shelving';
 import { overlappingCompartments } from './compartments';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
@@ -91,7 +92,20 @@ export function normalizeCompartment(c: Compartment): Compartment {
   const lengths = wallFrames(fp, base.wallThickness).map((w) => w.length);
   const front = findFrontEdge(fp);
   const withDoors = { ...base, doors: base.doors.map((d) => normalizeDoor(d, base, front, lengths)) };
-  return { ...withDoors, control: normalizeControl(withDoors, lengths) };
+  const shelving = base.accessories.shelving.map((u) => {
+    const bays = clamp(Math.round(u.bays), 1, SHELVING.maxBays);
+    const levels = clamp(Math.round(u.levels), 1, 8);
+    const postHeight = clamp(u.postHeight, 1200, Math.max(1200, base.height - 25));
+    const top = clamp(u.top, 150, postHeight - 150);
+    const bottom = clamp(u.bottom, 75, top);
+    const gravity = u.gravity.filter((k) => {
+      const [bay, lvl] = k.split(':').map(Number);
+      return bay < bays && lvl < levels;
+    });
+    return { ...u, bays, levels, postHeight, top, bottom, gravity };
+  });
+  const withShelves = { ...withDoors, accessories: { ...withDoors.accessories, shelving } };
+  return { ...withShelves, control: normalizeControl(withShelves, lengths) };
 }
 
 function normalizeControl(c: Compartment, lengths: number[]): Compartment['control'] {
@@ -108,7 +122,21 @@ function normalizeControl(c: Compartment, lengths: number[]): Compartment['contr
 }
 
 export function normalize(config: Configuration): Configuration {
-  return { ...config, compartments: config.compartments.map(normalizeCompartment) };
+  // Compartment names must be unique; later duplicates get a number.
+  const seen = new Set<string>();
+  const compartments = config.compartments.map((c) => {
+    const n = normalizeCompartment(c);
+    const base = n.name.trim() || 'Compartment';
+    let name = n.name.trim() ? n.name : base;
+    if (seen.has(name.trim().toLowerCase())) {
+      let k = 2;
+      while (seen.has(`${base} (${k})`.toLowerCase())) k++;
+      name = `${base} (${k})`;
+    }
+    seen.add(name.trim().toLowerCase());
+    return name === n.name ? n : { ...n, name };
+  });
+  return { ...config, compartments };
 }
 
 export function validateCompartment(c: Compartment): Issue[] {
@@ -183,6 +211,13 @@ export function validateCompartment(c: Compartment): Issue[] {
       err('accessories', `A checker plate square on wall ${frames[q.wall]?.letter ?? '?'} is ${why}. Remove it or move the door.`, undefined, [
         { type: 'part', id: `${c.id}:plate-${q.wall}-${q.col}-${q.row}` },
       ]);
+    }
+  });
+
+  c.accessories.shelving.forEach((u) => {
+    const why = shelvingBlocker(c, u);
+    if (why) {
+      err('accessories', `Shelving ${u.id.replace('sh', 'S')} is ${why}. Move it on the Accessories step.`, undefined, [{ type: 'part', id: `${c.id}:shelf-${u.id}` }]);
     }
   });
 

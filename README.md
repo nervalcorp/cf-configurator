@@ -47,6 +47,7 @@ apps/web          React + Zustand + Three.js app
 - **The rules engine owns constraints.** The UI may hide options, but `normalize()` is what guarantees a freezer has a floor or a notch stays in range.
 - **Edits are committed or transient.** Drags and slider moves update live as transient edits and commit once on release, so each gesture is one undo step.
 - **Configurations are versioned.** Bump `SCHEMA_VERSION` on breaking changes and teach `migrate()` to read the old shape. v1 → v2 turned the single front `door` into a `doors` list.
+- **Screenshots** come in three sizes: as on screen, 2×, and 4× for print with 300 dpi written into the PNG (capped at 8192 px on the long side).
 - **The camera only moves when the user moves it,** presses reset, or adds or removes a compartment. Changing settings never reframes the view.
 - **Height means wall panel height.** The ceiling panel sits on top, so the overall height is floor + panels + ceiling.
 - **Walls are lettered A, B, C… counter-clockwise on the plan, starting with A at the front wall.** Joint 1 is the left end of wall A.
@@ -73,11 +74,17 @@ The roll-up opening runs the full 120" panel height; its drum housing sits above
 
 ## Compartments
 
-A configuration holds one or more compartments ("Compartment 1", "Compartment 2"…; rename them on the Layout step). Each keeps its own shape, size, finish, floor, doors, glass doors, controller and accessories; the site type (indoor or outdoor) is shared. The bar over the 3D view switches between them and has **Add Compartment** and **Duplicate**. New and duplicated compartments are placed touching the right-hand side of the site, fronts in line; on the Layout step a compartment can be placed touching any side of another, or nudged in 6" steps. A position is the centre of the compartment's footprint, so resizing grows both ways. Overlapping compartments are flagged on both. The floor plan shows the compartment being edited.
+A configuration holds one or more compartments ("Compartment 1", "Compartment 2"…; rename them on the Layout step). Each keeps its own shape, size, finish, floor, doors, glass doors, controller and accessories; the site type (indoor or outdoor) is shared. The bar over the 3D view switches between them and has **Add Compartment** and **Duplicate**. New and duplicated compartments are placed touching the right-hand side of the site, fronts in line; on the Layout step a compartment can be placed touching any side of another, or nudged in 6" steps. A position is the centre of the compartment's footprint, so resizing grows both ways. Overlapping compartments are flagged on both. Names are unique: the name field refuses one that is taken, and loaded files with repeated names get a number. With more than one compartment, the one being edited glows teal on the floor. The floor plan shows the compartment being edited.
 
 ## Floors and ramps
 
 Floor is chosen on the Layout step: Standard, DuraFloor, Recessed (a concrete slab running 4" past the walls, flush with the room floor) or none (freezers always have a floor). With Standard or DuraFloor, the Exterior ramp option puts an ICC-R3436 aluminum ramp (34" × 36") outside every door close to 34" wide (man doors, single traffic doors), rising from the ground to the top of the floor.
+
+## Shelving
+
+ICC-ACC-SHELVING-HD heavy duty shelving goes inside a compartment from the Accessories step. A unit is a run of bays, one per door opening, each with 30" × 27" wire shelves (5 by default, heights adjustable by setting the lowest and highest shelf). It is built from the product sheet's parts: perforated black posts with foot plates and post retainer brackets, wire shelves (a flat panel with a see-through mesh texture), clear price tag strips, diagonal side braces and stabilizer bars along the top. Any shelf can take a gravity flow tray, which tips the shelf toward the front and adds a dark bed, wire lane dividers and a front stop.
+
+**Add shelving** puts a unit behind the nearest glass door unit that has none yet: one bay per glass door, facing the glass, 3" back from the wall, with shelves inside the door opening. Without glass doors it goes against the back wall. Drag units on the floor plan (the teal edge is the front), nudge them 1" at a time, or turn them 90°. A unit that leaves the compartment or overlaps another is flagged. The part list counts one ICC-ACC-SHELVING-HD per bay and gravity trays separately.
 
 ## Glass display doors
 

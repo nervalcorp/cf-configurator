@@ -3,6 +3,7 @@ import { CHECKER_PLATE, RAMP, type RampType, doorTag, framesByLetter, framesFor,
 import { useActiveCompartment, useStore } from '../store';
 import { Section, Toggle } from '../shell/controls';
 import { CheckerPainter } from './CheckerPainter';
+import { ShelvingSection } from './ShelvingSection';
 
 export function AccessoriesTab() {
   const c = useActiveCompartment();
@@ -17,6 +18,8 @@ export function AccessoriesTab() {
 
   return (
     <>
+      <ShelvingSection c={c} />
+
       <Section title="Checker plates" hint={`${CHECKER_PLATE.label}`}>
         <p className="panel-note first">
           Click or drag on the wall to add or remove squares. Squares line up on a 1-ft grid, so the tread pattern runs on from square to square.

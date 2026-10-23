@@ -32,6 +32,9 @@ import {
   offsetPolygon,
   pickHandle,
   slideDoor,
+  shelvingRect,
+  facingVector,
+  updateShelving,
   getControl,
   wallFrames,
   wallPoint,
@@ -88,7 +91,9 @@ function project(f: WallFrame, T: number, p: Vec2) {
   return { along: dx * f.u[0] + dy * f.u[1], out: dx * f.n[0] + dy * f.n[1] - T };
 }
 
-function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: 'shape' | 'doors', active: number, selected: string | null, pick: DoorPick) {
+type Mode = 'shape' | 'doors' | 'shelving';
+
+function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: Mode, active: number, selected: string | null, pick: DoorPick, shelf: string | null) {
   const fp = fpOf(c);
   const n = fp.length;
   const cw = isClockwise(fp);
@@ -308,6 +313,49 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
     ctx.fillText(doorTag(c.doors, d.id), ...lab);
   });
 
+  // Shelving: footprint, with the front edge (the side customers face) in teal
+  for (const u of c.accessories.shelving) {
+    const r = shelvingRect(u);
+    const sel = mode === 'shelving' && u.id === shelf;
+    const [x0, y0] = P([r.minX, r.minY]);
+    const [x1, y1] = P([r.maxX, r.maxY]);
+    ctx.fillStyle = sel ? 'rgba(20,184,200,0.18)' : 'rgba(30,41,59,0.10)';
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = sel ? '#0e9aa7' : '#334155';
+    ctx.lineWidth = sel ? 2 : 1.2;
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    // bay lines
+    const f = facingVector(u.facing);
+    ctx.lineWidth = 0.8;
+    ctx.setLineDash([3, 3]);
+    for (let i = 1; i < u.bays; i++) {
+      const t = i / u.bays;
+      ctx.beginPath();
+      if (f[1] !== 0) {
+        const x = x0 + (x1 - x0) * t;
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+      } else {
+        const y = y0 + (y1 - y0) * t;
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#0e9aa7';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (f[1] > 0) (ctx.moveTo(x0, y1), ctx.lineTo(x1, y1));
+    else if (f[1] < 0) (ctx.moveTo(x0, y0), ctx.lineTo(x1, y0));
+    else if (f[0] > 0) (ctx.moveTo(x1, y0), ctx.lineTo(x1, y1));
+    else (ctx.moveTo(x0, y0), ctx.lineTo(x0, y1));
+    ctx.stroke();
+    ctx.fillStyle = sel ? '#0e7490' : '#334155';
+    ctx.font = '700 11px Outfit, sans-serif';
+    ctx.fillText(u.id.replace('sh', 'S'), (x0 + x1) / 2, (y0 + y1) / 2);
+  }
+
   // Controller: a small dark tab on the outside of its wall
   const ctl = getControl(c.control.model);
   const cf = frames[c.control.wall];
@@ -350,12 +398,14 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
 
 type Drag =
   | { type: 'corner'; handle: DragHandle; view: View; vertex: number }
-  | { type: 'door'; id: string; view: View; grab: number };
+  | { type: 'door'; id: string; view: View; grab: number }
+  | { type: 'shelf'; id: string; view: View; dx: number; dy: number };
 
-export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; pick?: DoorPick }) {
+export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPick }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const comp = useActiveCompartment();
   const selected = useStore((s) => s.ui.selectedDoor);
+  const shelf = useStore((s) => s.ui.selectedShelf);
   const { editCompartment, commit, setUi } = useStore.getState();
   const drag = useRef<Drag | null>(null);
 
@@ -364,7 +414,7 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d');
     const d = drag.current;
-    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected, pick);
+    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected, pick, shelf);
   });
 
   const pos = (e: React.PointerEvent): Vec2 => {
@@ -418,7 +468,16 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
       onPointerDown={(e) => {
         const v = viewNow();
         const p = pos(e);
-        if (mode === 'shape') {
+        if (mode === 'shelving') {
+          const [px, py] = toPlan(v, ...p);
+          const u = [...comp.accessories.shelving].reverse().find((x) => {
+            const r = shelvingRect(x);
+            return px >= r.minX && px <= r.maxX && py >= r.minY && py <= r.maxY;
+          });
+          if (!u) return;
+          setUi({ selectedShelf: u.id });
+          drag.current = { type: 'shelf', id: u.id, view: v, dx: px - u.x, dy: py - u.y };
+        } else if (mode === 'shape') {
           const vi = vertexAt(p, v);
           if (vi < 0) return;
           const handle = pickHandle(comp, vi);
@@ -447,6 +506,15 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
         const d = drag.current;
         const v = viewNow();
         if (!d) {
+          if (mode === 'shelving') {
+            const [px, py] = toPlan(v, ...pos(e));
+            const over = comp.accessories.shelving.some((x) => {
+              const r = shelvingRect(x);
+              return px >= r.minX && px <= r.maxX && py >= r.minY && py <= r.maxY;
+            });
+            e.currentTarget.style.cursor = over ? 'grab' : 'default';
+            return;
+          }
           const hot = mode === 'shape' ? vertexAt(pos(e), v) >= 0 : !!doorAt(toPlan(v, ...pos(e)), v);
           const wall = mode === 'doors' && selected && !hot && wallAt(toPlan(v, ...pos(e)), v);
           e.currentTarget.style.cursor = hot ? 'grab' : wall ? 'copy' : 'crosshair';
@@ -455,6 +523,9 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
         const [px, py] = toPlan(d.view, ...pos(e));
         if (d.type === 'corner') {
           editCompartment((c) => dragHandle(c, d.handle, [px, py]), { transient: true });
+        } else if (d.type === 'shelf') {
+          const snap = (v: number) => Math.round(v / 25.4) * 25.4;
+          editCompartment((c) => updateShelving(c, d.id, { x: snap(px - d.dx), y: snap(py - d.dy) }), { transient: true });
         } else {
           editCompartment(
             (c) => {
@@ -472,7 +543,7 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; p
         if (!drag.current) return;
         drag.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
-        e.currentTarget.style.cursor = 'crosshair';
+        e.currentTarget.style.cursor = mode === 'shelving' ? 'default' : 'crosshair';
         commit();
       }}
     />

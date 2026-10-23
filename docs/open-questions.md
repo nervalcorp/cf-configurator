@@ -6,6 +6,16 @@
 - **Not in the ICC catalog.** Jamb guards, kickplates, pressure-relief vents and strip curtains have no model yet, so they are not offered.
 - **Hinge kits.** ICC-1238SL/SR hinges are not added to the part list; assumed included with the door.
 
+## Shelving
+
+- **Gravity flow tray model number.** Not on the Heavy Duty Shelving page; counted separately in the part list.
+- **Quantity basis.** ICC-ACC-SHELVING-HD is counted once per bay (door opening, 5 shelves). Is that how it is sold?
+- **Post height.** Defaults to 7' 0" (or the wall height if lower). Should posts run to the ceiling with the retainer brackets fixed to it?
+
+## Hardware from your SVGs (parked)
+
+- John will send flat vector shapes for hinges, knobs, pull handles, latches and similar hardware. Use them to build those 3D parts, and count them as accessories in the part list.
+
 ## Compartments and ramps
 
 - **Interior ramp.** Withdrawn for now; saved drafts with it become the exterior ramp. Will it come back?

@@ -313,3 +313,27 @@ export function rampServes(d: { family: DoorFamilyId; glass: GlassParams }): boo
   if (k !== 'swing' && k !== 'traffic') return false;
   return Math.abs(doorSize(d).width - RAMP.width) <= inToMm(2) + 0.01;
 }
+
+/**
+ * ICC-ACC-SHELVING-HD heavy duty shelving (black, powder coated low-carbon
+ * steel, plastic-dipped wire shelves, 80 kg per shelf, adjustable heights,
+ * 5 shelves per door opening, price tag holder and expansion screws included).
+ * One bay = one door opening: a 30" × 27" shelf between perforated posts.
+ * Parts from the product sheet: posts with foot plates, wire shelves, side
+ * braces, stabilizer bar, post retainer brackets, price tag holders, and
+ * optional gravity flow trays.
+ */
+export const SHELVING = {
+  sku: 'ICC-ACC-SHELVING-HD',
+  label: 'Heavy duty shelving, per door opening',
+  shelfWidth: inToMm(30),
+  shelfDepth: inToMm(27),
+  post: inToMm(1.5),
+  levels: 5,
+  maxBays: 8,
+  /** Gravity flow trays slope toward the front so product slides forward. */
+  gravityTilt: (5 * Math.PI) / 180,
+  // CONFIRM: no model number on the page for the gravity flow tray.
+  gravityLabel: 'Gravity flow shelf tray',
+  defaultHeight: inToMm(84),
+};

@@ -41,6 +41,8 @@ interface UI {
   active: string;
   /** Door being edited on the Doors tab. */
   selectedDoor: string | null;
+  /** Shelving unit being edited on the Accessories tab. */
+  selectedShelf: string | null;
 }
 
 interface State {
@@ -91,6 +93,7 @@ export const useStore = create<State>((set, get) => {
       lightOrbit: false,
       active: initial.compartments[0].id,
       selectedDoor: initial.compartments[0].doors[0]?.id ?? null,
+      selectedShelf: null,
     },
 
     editCompartment: (fn, opts) => {
@@ -139,7 +142,7 @@ export const useStore = create<State>((set, get) => {
     setActive: (id) => {
       const c = get().config.compartments.find((x) => x.id === id);
       if (!c) return;
-      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null } }));
+      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null, selectedShelf: c.accessories.shelving[0]?.id ?? null } }));
     },
 
     addCompartment: () => {
@@ -172,6 +175,7 @@ export const useActiveCompartment = () =>
  */
 export interface ViewerApi {
   resetView: () => void;
-  screenshot: () => void;
+  /** scale × the on-screen size; dpi written into the PNG. */
+  screenshot: (scale: number, dpi: number) => void;
 }
 export const viewerApi: { current: ViewerApi | null } = { current: null };

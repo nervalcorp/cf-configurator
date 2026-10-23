@@ -4,10 +4,11 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { ComponentTree, Compartment, ExteriorFinish } from '@wic/core';
+import { type ComponentTree, type Compartment, type ExteriorFinish, offsetPolygon } from '@wic/core';
 import { activeBrand } from '../theme/brands';
 import { Materials, Skin } from './materials';
-import { badgeTexture, checkerTexture, decalTexture, loadImage, svgDataUrl, tc1000Face, transparentLogoTexture, tsc2000Face, whiteLogo } from './textures';
+import { withDpi } from './png';
+import { badgeTexture, checkerTexture, wireShelfTexture, decalTexture, loadImage, svgDataUrl, tc1000Face, transparentLogoTexture, tsc2000Face, whiteLogo } from './textures';
 import { type Built, buildMeshes, disposeTree } from './buildMeshes';
 
 const MM = 0.001;
@@ -89,6 +90,7 @@ export class SceneController {
 
     this.model.scale.setScalar(MM);
     this.mats.checker.map = checkerTexture();
+    this.mats.wireShelf.map = wireShelfTexture();
     this.paintScreens(null);
     this.scene.add(this.model);
 
@@ -114,7 +116,7 @@ export class SceneController {
    * Rebuild every compartment. Each entry is drawn at its site position with
    * its own outside finish; flagged parts get the red overlay.
    */
-  update(entries: { tree: ComponentTree; comp: Compartment; flags: Map<string, string[]> }[]) {
+  update(entries: { tree: ComponentTree; comp: Compartment; flags: Map<string, string[]> }[], activeId?: string) {
     this.clearHover();
     const keep = this.keepSet();
     for (const [id, b] of this.built) {
@@ -142,6 +144,7 @@ export class SceneController {
       const group = new THREE.Group();
       group.position.set(comp.position.x, 0, comp.position.z);
       group.add(built.root);
+      if (many && comp.id === activeId) group.add(this.floorGlow(tree));
       if (many) {
         group.traverse((o) => {
           if (o.userData.label) o.userData.label = `${comp.name} · ${o.userData.label}`;
@@ -160,6 +163,29 @@ export class SceneController {
     this.mats.setWireframe(this.wireframe);
     for (const sk of this.skins.values()) for (const m of sk.materials()) (m as THREE.MeshStandardMaterial).wireframe = this.wireframe;
     this.placeKeyLight();
+  }
+
+  /**
+   * Flat glow on the floor around the compartment being edited: a bright band
+   * just outside the walls and a soft wider one. Two flat meshes, no shaders.
+   */
+  private floorGlow(tree: ComponentTree): THREE.Group {
+    const g = new THREE.Group();
+    const ring = (inner: number, outer: number, mat: THREE.Material, y: number) => {
+      const o = offsetPolygon(tree.footprint, outer);
+      const i = offsetPolygon(tree.footprint, inner);
+      const shape = new THREE.Shape(o.map(([x, z]) => new THREE.Vector2(x, -z)));
+      shape.holes.push(new THREE.Path(i.map(([x, z]) => new THREE.Vector2(x, -z))));
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.y = y;
+      m.renderOrder = 1;
+      g.add(m);
+    };
+    ring(140, 420, this.mats.glowSoft, 1);
+    ring(20, 140, this.mats.glow, 2);
+    g.userData.glow = true;
+    return g;
   }
 
   /** Brand logo for door badges (SVG markup or image URL); null shows a plain badge. */
@@ -277,13 +303,31 @@ export class SceneController {
     this.controls.update();
   }
 
-  screenshot() {
-    this.renderer.render(this.scene, this.camera);
-    const url = this.renderer.domElement.toDataURL('image/png');
+  /**
+   * Save the view as a PNG. `scale` multiplies the on-screen size in CSS
+   * pixels (1 = as shown on this screen); the image is capped at what the
+   * graphics card can render. `dpi` is written into the file for printing.
+   */
+  async screenshot(scale: number, dpi: number) {
+    const r = this.renderer;
+    const prev = r.getPixelRatio();
+    const w = this.host.clientWidth;
+    const h = this.host.clientHeight;
+    const maxSide = Math.min(r.capabilities.maxTextureSize, 8192);
+    const ratio = scale <= 1 ? prev : Math.min(scale, maxSide / Math.max(w, h));
+    r.setPixelRatio(ratio);
+    r.render(this.scene, this.camera);
+    const blob = await new Promise<Blob | null>((res) => r.domElement.toBlob(res, 'image/png'));
+    r.setPixelRatio(prev);
+    r.render(this.scene, this.camera);
+    if (!blob) return;
+    const file = await withDpi(blob, dpi);
+    const url = URL.createObjectURL(file);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `walk-in-${new Date().toISOString().slice(0, 10)}.png`;
+    a.download = `walk-in-${new Date().toISOString().slice(0, 10)}-${Math.round(w * ratio)}x${Math.round(h * ratio)}.png`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
   dispose() {
@@ -297,6 +341,7 @@ export class SceneController {
     this.mats.badgeFace.map?.dispose();
     this.mats.logoWhite.map?.dispose();
     this.mats.checker.map?.dispose();
+    this.mats.wireShelf.map?.dispose();
     this.mats.screenTSC.map?.dispose();
     this.mats.screenTC.map?.dispose();
     this.mats.dispose();

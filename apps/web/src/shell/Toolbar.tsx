@@ -1,7 +1,15 @@
+import { useState } from 'react';
 import { useStore, viewerApi } from '../store';
 import { Icon } from './controls';
 
+const SHOTS = [
+  { label: 'As on screen', hint: 'Quick share', scale: 1, dpi: 96 },
+  { label: 'High quality', hint: '2× the screen size', scale: 2, dpi: 150 },
+  { label: 'Print', hint: '4× the screen, 300 dpi', scale: 4, dpi: 300 },
+];
+
 export function Toolbar() {
+  const [shotOpen, setShotOpen] = useState(false);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const { undo, redo, setUi } = useStore.getState();
@@ -58,9 +66,36 @@ export function Toolbar() {
       <button className="tool-btn" title="Reset view" aria-label="Reset view" onClick={() => viewerApi.current?.resetView()}>
         <Icon d={<><path d="M3 12a9 9 0 1 0 9-9" /><polyline points="3 3 3 9 9 9" /></>} />
       </button>
-      <button className="tool-btn" title="Save screenshot" aria-label="Save screenshot" onClick={() => viewerApi.current?.screenshot()}>
-        <Icon d={<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></>} />
-      </button>
+      <div className="shot-wrap">
+        <button
+          className={`tool-btn${shotOpen ? ' active' : ''}`}
+          title="Save screenshot"
+          aria-label="Save screenshot"
+          aria-haspopup="menu"
+          aria-expanded={shotOpen}
+          onClick={() => setShotOpen(!shotOpen)}
+        >
+          <Icon d={<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></>} />
+        </button>
+        {shotOpen && (
+          <div className="shot-menu" role="menu">
+            {SHOTS.map((o) => (
+              <button
+                key={o.label}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setShotOpen(false);
+                  viewerApi.current?.screenshot(o.scale, o.dpi);
+                }}
+              >
+                <span className="shot-label">{o.label}</span>
+                <span className="shot-hint">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

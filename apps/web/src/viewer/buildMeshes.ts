@@ -111,6 +111,23 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
     }
     case 'plate':
       return plateMesh(part, mats);
+    case 'shelf-post':
+    case 'shelf-brace':
+    case 'shelf-bar':
+    case 'shelf-bracket':
+      return boxMesh(part, mats.shelfSteel);
+    case 'shelf-wire': {
+      // Mesh texture on top and bottom only; thin black edges.
+      const slots: THREE.Material[] = Array(6).fill(mats.shelfSteel);
+      slots[2] = mats.wireShelf;
+      slots[3] = mats.wireShelf;
+      return boxMesh(part, slots);
+    }
+    case 'price-tag':
+      return boxMesh(part, mats.priceTag);
+    case 'gravity-bed':
+    case 'gravity-divider':
+      return boxMesh(part, tinted(mats.chrome, part.color ?? '#2a2d30'));
     case 'control-body':
       return boxMesh(part, tinted(mats.badgeBody, part.color ?? '#16181b'));
     case 'screen': {
@@ -134,7 +151,10 @@ function tinted(base: THREE.MeshStandardMaterial, color: string) {
 function boxMesh(p: BoxPart, mat: THREE.Material | THREE.Material[]) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(...p.size), mat);
   m.position.set(...p.center);
+  // Turn about the vertical first, then tip about the part's own x axis.
+  m.rotation.order = 'YXZ';
   if (p.rotationY) m.rotation.y = p.rotationY;
+  if (p.rotationX) m.rotation.x = p.rotationX;
   return m;
 }
 

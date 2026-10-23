@@ -285,3 +285,49 @@ export function tc1000Face(logo: HTMLImageElement | null): THREE.Texture {
   ctx.fillText('SET', 182, 168);
   return canvasTexture(c);
 }
+
+/**
+ * Wire shelf: black plastic-dipped wire grid on a transparent ground, so a flat
+ * panel reads as a mesh shelf. Main rails every 3", fine wires every 0.75";
+ * one texture spans the whole 30" × 27" shelf.
+ */
+export function wireShelfTexture(): THREE.Texture {
+  const W = 1024;
+  const H = Math.round((W * 27) / 30);
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#141516';
+  const px = W / 30; // pixels per inch
+  // fine wires along the depth
+  ctx.lineWidth = px * 0.16;
+  for (let x = px * 0.375; x < W; x += px * 0.75) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  // cross rails
+  ctx.lineWidth = px * 0.3;
+  for (let y = px * 1.5; y < H; y += px * 3) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
+  // heavier frame and two support channels
+  ctx.lineWidth = px * 0.6;
+  ctx.strokeRect(px * 0.3, px * 0.3, W - px * 0.6, H - px * 0.6);
+  for (const x of [W / 3, (2 * W) / 3]) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}

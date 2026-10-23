@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -61,6 +61,32 @@ export interface CheckerSquare {
   row: number;
 }
 
+/** 0 = shelves face the front wall (+y), 90 = right, 180 = back, 270 = left. */
+export type Facing = 0 | 90 | 180 | 270;
+
+/**
+ * A run of heavy duty shelving inside a compartment. Position is the centre of
+ * its footprint in floor-plan coordinates (mm from the back-left corner of the
+ * compartment's bounding box, y toward the front).
+ */
+export interface ShelvingUnit {
+  id: string;
+  x: number;
+  y: number;
+  facing: Facing;
+  /** Bays (door openings) side by side. */
+  bays: number;
+  /** Shelves per bay. */
+  levels: number;
+  /** Height of the lowest and highest shelf from the floor. */
+  bottom: number;
+  top: number;
+  /** Post height from the floor. */
+  postHeight: number;
+  /** Shelves fitted with gravity flow trays, as "bay:level" (0-based). */
+  gravity: string[];
+}
+
 export interface ControlParams {
   model: ControlModel;
   wall: number;
@@ -100,6 +126,7 @@ export interface Compartment {
   accessories: {
     ramp: RampType;
     checker: CheckerSquare[];
+    shelving: ShelvingUnit[];
   };
   /** Refrigeration tab: the walk-in controller. */
   control: ControlParams;
@@ -164,7 +191,7 @@ export function defaultCompartment(id = 'c1', name = 'Compartment 1'): Compartme
       decal: defaultDecal(),
       floor: 'standard',
     },
-    accessories: { ramp: 'exterior', checker: [] },
+    accessories: { ramp: 'exterior', checker: [], shelving: [] },
     // Beside door d1 (latch side, hinged right) at eye level.
     control: { model: 'TSC2000', wall: 2, offset: inToMm(8), height: inToMm(60) },
   };
@@ -207,11 +234,12 @@ export function defaultConfiguration(): Configuration {
  * older files get no plates and a controller placed by normalize() (wall -1).
  * v4 → v5: compartments got a name and a site position; the interior ramp was
  * withdrawn (it becomes the exterior ramp).
+ * v5 → v6: shelving inside compartments.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, 3, 4, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, 4, 5, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -241,6 +269,7 @@ export function migrate(input: unknown): Configuration {
           ...c.accessories,
           ramp: (c.accessories?.ramp as string | undefined) === 'none' ? 'none' : 'exterior',
           checker: c.accessories?.checker ?? [],
+          shelving: c.accessories?.shelving ?? [],
         },
         // wall -1 asks normalize() to place it beside the first door.
         control: c.control ?? { ...base.control, wall: -1 },
