@@ -63,16 +63,28 @@ A compartment holds any number of doors, each on any wall. Each door records its
 | Pallet door 48" × 78", semi-buried | ICC-DR-4878 C·F L·R | swing side, in/out, closer add-on, handle |
 | Pallet sliding 54" × 96" | ICC-DR-5496 L·R | slide direction, handle |
 | Forklift sliding 72" × 96" | ICC-DR-7296 L·R | slide direction, handle |
-| Forklift roll-up, custom (96" wide shown) | ICC-DR-96120 | none; coolers with 120" panels only |
+| Forklift roll-up, custom (96" wide for now) | ICC-DR-96120 | none; coolers with 120" panels only |
 | Traffic, single / double | ICC-DR-3684DS / 7284DS -GR·WH·BK | finish |
 
-Semi-buried doors stand proud of the wall on a heavier frame (3", 20 mm proud) and overlap the opening; full-buried doors sit flush in a 2" frame. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
+Man doors are the same 34" × 78" leaf whichever way they are mounted. Semi-buried doors stand proud of the wall on a heavier frame (3", 20 mm proud) and lap 1.5" over the opening behind; full-buried doors sit flush in a 2" frame with a gasket line around the leaf. Swing doors come with cam-lift hinges and a self closer, modelled after the ICC door pages. L/R is the swing side seen from outside: hinges on the left for L. Hardware add-ons: hydraulic closer ICC-20SS; handles ICC-P4, ICC-W58BL, ICC-W58BR, ICC-38.
 
 The roll-up opening runs the full 120" panel height; its drum housing sits above the walls and is not counted against the panel height. The rules engine checks that each door fits its wall (with frame, guides and slide travel), that doors on one wall keep 4" apart, and that the compartment is tall enough for the door. Dragging the floor plan is refused when a wall would get too short for its doors.
 
+## Glass display doors
+
+Glass units live in the same `doors` list (family `glass`) so they share wall placement, spacing rules and red problem marking with doors. They are numbered G1, G2… and edited on the Glass doors step.
+
+| Series | Per door | Door frame | Finishes | Handle | Models |
+| --- | --- | --- | --- | --- | --- |
+| Select | 30" × 66" | PVC, glossy black | glossy black | full length | ICC-GD-SELECT-2D/3D |
+| Elite | 30" × 72" | aluminum | black (BK), anodized (AN) | full length | ICC-GD-ELITE-BK/AN-2D/3D |
+| Signature | 30" × 72" | frameless | black (BK), anodized (SV) | 18" bar | ICC-GD-SIGNATURE-BK/SV-2D/3D |
+
+A unit is its doors plus a 1.5" aluminum outer frame (2-door 63" wide, 3-door 93"). Two-door units open from the centre; three-door units hinge left, right, right, as in the ICC photos. Each has heater rails with hinge pins top and bottom and a white logo on the last door.
+
 ## Finishes
 
-Outside of the walls: White Coated, Grey White Coated, Logo Decals, or a custom colour. Logo Decals tile an image across and down the outside of the walls, turned 45°, over a background colour (corner trim takes the background colour). The default image is the brand logo (`apps/web/src/assets/icc-logo.svg`); users can upload an SVG, PNG, JPG or WebP up to 2 MB, which is saved inside the configuration file. Tile size runs 12"–60".
+Outside of the walls: White Coated, Grey White Coated, Logo Decals (the default: white background, 12" tiles), or a custom colour. Logo Decals tile an image across and down the outside of the walls, turned 45°, over a background colour (corner trim takes the background colour). The default image is the brand logo (`apps/web/src/assets/icc-logo.svg`); users can upload an SVG, PNG, JPG or WebP up to 2 MB, which is saved inside the configuration file. Tile size runs 12"–60".
 
 ## Problems in the 3D view
 

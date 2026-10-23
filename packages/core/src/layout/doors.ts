@@ -6,7 +6,7 @@
  * doors. Two doors on one wall may not have overlapping intervals.
  */
 import { type Compartment, type Door, LIMITS, newDoor } from '../config';
-import { type DoorFamilyId, getDoorFamily } from '../catalog';
+import { type DoorFamilyId, doorSize, getDoorFamily } from '../catalog';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, wallFrames } from './walls';
 
@@ -19,14 +19,15 @@ export interface DoorSpan {
 /** Space the door uses on its wall, including frame and slide travel. */
 export function doorSpan(d: Door, offset = d.offset): DoorSpan {
   const f = getDoorFamily(d.family);
+  const { width } = doorSize(d);
   let left = f.side;
   let right = f.side;
   if (f.kind === 'slide') {
     // The leaf parks beside the opening in the direction it slides.
-    if (d.hinge === 'left') left += f.width;
-    else right += f.width;
+    if (d.hinge === 'left') left += width;
+    else right += width;
   }
-  return { from: offset - left, to: offset + f.width + right };
+  return { from: offset - left, to: offset + width + right };
 }
 
 /** Smallest inside run a wall needs to hold this door at all. */
@@ -79,11 +80,16 @@ function nextId(c: Compartment): string {
  * Add a door of the given type, on the front wall if it fits, else on any wall
  * that has room. Lands as close to `near` (an offset) as possible, else leftmost.
  */
-export function addDoor(c: Compartment, family: DoorFamilyId = 'man', near?: number): { compartment: Compartment; id: string | null } {
+export function addDoor(
+  c: Compartment,
+  family: DoorFamilyId = 'man',
+  near?: number,
+  extra: Partial<Door> = {},
+): { compartment: Compartment; id: string | null } {
   const fp = footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
   const front = findFrontEdge(fp);
   const id = nextId(c);
-  const draft: Door = { ...newDoor(id, front, 0), family };
+  const draft: Door = { ...newDoor(id, front, 0), ...extra, family };
   const order = [front, ...fp.map((_, i) => i).filter((i) => i !== front)];
   for (const wall of order) {
     const off = findFreeOffset(c, { ...draft, wall }, wall, near);
@@ -118,7 +124,7 @@ export function moveDoor(c: Compartment, id: string, wall: number, near?: number
 export function setShape(c: Compartment, shape: Compartment['shape'], nw: number, nd: number): Compartment {
   let next: Compartment = { ...c, shape, notchW: nw, notchD: nd, doors: [] };
   for (const d of c.doors) {
-    const placed = addDoor(next, d.family, d.offset);
+    const placed = addDoor(next, d.family, d.offset, d);
     if (!placed.id) continue; // no room anywhere; dropped (rare: very small box with many doors)
     const seat = placed.compartment.doors.at(-1)!;
     next = updateDoor(placed.compartment, placed.id, { ...d, wall: seat.wall, offset: seat.offset });

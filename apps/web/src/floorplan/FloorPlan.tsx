@@ -22,6 +22,9 @@ import {
   footprint,
   formatInches,
   getDoorFamily,
+  doorSize,
+  doorTag,
+  getGlassSeries,
   inToMm,
   isClockwise,
   jointNumber,
@@ -68,7 +71,15 @@ function css(name: string, fallback: string) {
 
 const fpOf = (c: Compartment) => footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
 const maxSwing = (c: Compartment) =>
-  c.doors.reduce((m, d) => Math.max(m, getDoorFamily(d.family).kind === 'swing' ? getDoorFamily(d.family).width : inToMm(12)), inToMm(12));
+  c.doors.reduce((m, d) => {
+    const k = getDoorFamily(d.family).kind;
+    const reach = k === 'swing' ? doorSize(d).width : k === 'glass' ? getGlassSeries(d.glass.series).doorWidth : inToMm(12);
+    return Math.max(m, reach);
+  }, inToMm(12));
+
+/** Which doors this plan lets you pick and drag. */
+export type DoorPick = 'doors' | 'glass';
+const pickable = (pick: DoorPick, family: string) => (pick === 'glass' ? family === 'glass' : family !== 'glass');
 
 /** Project a plan point onto a wall: distance along it and distance from its outside face. */
 function project(f: WallFrame, T: number, p: Vec2) {
@@ -77,7 +88,7 @@ function project(f: WallFrame, T: number, p: Vec2) {
   return { along: dx * f.u[0] + dy * f.u[1], out: dx * f.n[0] + dy * f.n[1] - T };
 }
 
-function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: 'shape' | 'doors', active: number, selected: string | null) {
+function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: 'shape' | 'doors', active: number, selected: string | null, pick: DoorPick) {
   const fp = fpOf(c);
   const n = fp.length;
   const cw = isClockwise(fp);
@@ -167,14 +178,15 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
   }
 
   // Doors
-  c.doors.forEach((d, k) => {
+  c.doors.forEach((d) => {
     const f = frames[d.wall];
     if (!f) return;
     const fam = getDoorFamily(d.family);
     const T = c.wallThickness;
-    const W = fam.width;
+    const W = doorSize(d).width;
     const isSel = mode === 'doors' && d.id === selected;
-    const col = isSel ? doorCol : mode === 'doors' ? '#94a3b8' : doorCol;
+    const dim = mode === 'doors' && (!isSel || !pickable(pick, d.family));
+    const col = isSel ? doorCol : dim ? '#94a3b8' : doorCol;
     const outside = (along: number, out: number) => P(wallPoint(f, along, T + out));
     const r = W * view.scale;
     ctx.strokeStyle = col;
@@ -239,6 +251,31 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
       ctx.closePath();
       ctx.stroke();
       ctx.setLineDash([]);
+    } else if (fam.kind === 'glass') {
+      // Glass unit: each door's swing outward, hinges as the unit's pattern.
+      const s = getGlassSeries(d.glass.series);
+      const FG = (W - d.glass.count * s.doorWidth) / 2;
+      const hinges = d.glass.count === 2 ? ['left', 'right'] : ['left', 'right', 'right'];
+      for (let i = 0; i < d.glass.count; i++) {
+        const a = d.offset + FG + i * s.doorWidth;
+        const b = a + s.doorWidth;
+        const hingeAlong = hinges[i] === 'left' ? a : b;
+        const hp = outside(hingeAlong, 0);
+        const lr = s.doorWidth * view.scale;
+        const leafDir: Vec2 = [f.n[0], f.n[1]];
+        const closedDir: Vec2 = hinges[i] === 'left' ? [f.u[0], f.u[1]] : [-f.u[0], -f.u[1]];
+        const a1 = angleOf(leafDir);
+        const a2 = angleOf(closedDir);
+        let diff = a2 - a1;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(hp[0], hp[1], lr, a1, a2, diff < 0);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     } else {
       // traffic: two-way swing, short arcs both sides
       const leaves = d.family === 'traffic-double' ? 2 : 1;
@@ -268,7 +305,7 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: '
     ctx.font = `${isSel ? 700 : 600} 11px Outfit, sans-serif`;
     const lab = outside(d.offset + W / 2, Math.min(W, inToMm(40)) + 140);
     ctx.fillStyle = col;
-    ctx.fillText(`D${k + 1}`, ...lab);
+    ctx.fillText(doorTag(c.doors, d.id), ...lab);
   });
 
   // Corner handles (shape mode) and joint numbers
@@ -297,7 +334,7 @@ type Drag =
   | { type: 'corner'; handle: DragHandle; view: View; vertex: number }
   | { type: 'door'; id: string; view: View; grab: number };
 
-export function FloorPlan({ mode }: { mode: 'shape' | 'doors' }) {
+export function FloorPlan({ mode, pick = 'doors' }: { mode: 'shape' | 'doors'; pick?: DoorPick }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const comp = useActiveCompartment();
   const selected = useStore((s) => s.ui.selectedDoor);
@@ -309,7 +346,7 @@ export function FloorPlan({ mode }: { mode: 'shape' | 'doors' }) {
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d');
     const d = drag.current;
-    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected);
+    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected, pick);
   });
 
   const pos = (e: React.PointerEvent): Vec2 => {
@@ -341,9 +378,10 @@ export function FloorPlan({ mode }: { mode: 'shape' | 'doors' }) {
     if (!hit) return null;
     const door = comp.doors.find(
       (d) =>
+        pickable(pick, d.family) &&
         d.wall === hit.frame.edge &&
         hit.along >= d.offset - inToMm(4) &&
-        hit.along <= d.offset + getDoorFamily(d.family).width + inToMm(4),
+        hit.along <= d.offset + doorSize(d).width + inToMm(4),
     );
     return door ? { door, along: hit.along } : null;
   };
@@ -374,11 +412,11 @@ export function FloorPlan({ mode }: { mode: 'shape' | 'doors' }) {
           if (hit) {
             setUi({ selectedDoor: hit.door.id });
             drag.current = { type: 'door', id: hit.door.id, view: v, grab: hit.along - hit.door.offset };
-          } else if (selected) {
+          } else if (selected && comp.doors.some((x) => x.id === selected && pickable(pick, x.family))) {
             const w = wallAt(planPt, v);
             if (w) {
               const d = comp.doors.find((x) => x.id === selected);
-              const W = d ? getDoorFamily(d.family).width : 0;
+              const W = d ? doorSize(d).width : 0;
               editCompartment((c) => moveDoor(c, selected, w.frame.edge, w.along - W / 2));
             }
             return;

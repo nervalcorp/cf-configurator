@@ -17,6 +17,10 @@ export class Materials {
   badgeBody = new THREE.MeshStandardMaterial({ color: '#283442', roughness: 0.5 });
   /** Logo face of the door badge; falls back to plain navy until the logo loads. */
   badgeFace = new THREE.MeshStandardMaterial({ color: '#283442', roughness: 0.4 });
+  /** White logo printed on glass (transparent background). */
+  logoWhite = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  /** Glass display door panes: clear with a cool tint. */
+  displayGlass = new THREE.MeshStandardMaterial({ color: 0xaeb7be, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.5 });
   /** Red tint over parts with a problem. */
   flag = new THREE.MeshBasicMaterial({
     color: 0xff1a1a,
@@ -64,6 +68,12 @@ export class Materials {
     this.exterior.color.set(decal ? '#ffffff' : color);
   }
 
+  setGlassLogo(tex: THREE.Texture | null) {
+    this.logoWhite.map = tex;
+    this.logoWhite.opacity = tex ? 0.95 : 0;
+    this.logoWhite.needsUpdate = true;
+  }
+
   setBadge(tex: THREE.Texture | null) {
     this.badgeFace.map = tex;
     this.badgeFace.color.set(tex ? '#ffffff' : '#283442');
@@ -75,7 +85,7 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */

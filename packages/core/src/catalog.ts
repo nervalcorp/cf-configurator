@@ -13,7 +13,7 @@ import { inToMm } from './units';
 
 export const CATALOG_SOURCE = 'ICC spec-widget catalog (models under audit)';
 
-export type DoorKind = 'swing' | 'slide' | 'rollup' | 'traffic';
+export type DoorKind = 'swing' | 'slide' | 'rollup' | 'traffic' | 'glass';
 /**
  * How a swing door sits in the wall.
  * semi-buried: the leaf and part of its body stand proud of the wall, overlapping the opening.
@@ -27,10 +27,21 @@ export type DoorFamilyId =
   | 'slide-forklift'
   | 'rollup'
   | 'traffic-single'
-  | 'traffic-double';
+  | 'traffic-double'
+  | 'glass';
 export type ManSeries = '3478' | '13478';
 export type HandleId = 'included' | 'ICC-P4' | 'ICC-W58BL' | 'ICC-W58BR' | 'ICC-38';
 export type TrafficFinish = 'GR' | 'WH' | 'BK';
+export type GlassSeries = 'select' | 'elite' | 'signature';
+/** BK = black; AN = anodized (Elite); SV = anodized (Signature's model code). Select is glossy black only. */
+export type GlassFinish = 'BK' | 'AN';
+export type GlassCount = 2 | 3;
+
+export interface GlassParams {
+  series: GlassSeries;
+  finish: GlassFinish;
+  count: GlassCount;
+}
 
 export interface DoorFamily {
   id: DoorFamilyId;
@@ -72,7 +83,76 @@ export const DOOR_FAMILIES: readonly DoorFamily[] = [
   { id: 'rollup', label: 'Forklift roll-up door, 120" panels, coolers only', kind: 'rollup', width: inToMm(96), height: inToMm(120), headroom: 0, side: inToMm(4.5), temps: ['cooler'], handed: false, panelHeight: inToMm(120) },
   { id: 'traffic-single', label: 'Traffic door, single 36" × 84"', kind: 'traffic', width: inToMm(36), height: inToMm(84), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: false },
   { id: 'traffic-double', label: 'Traffic door, double 72" × 84"', kind: 'traffic', width: inToMm(72), height: inToMm(84), headroom: FRAME + inToMm(2), side: FRAME, temps: BOTH, handed: false },
+  // Size depends on series and door count; see glassUnitSize(). Width/height here are the 2-door Elite unit.
+  { id: 'glass', label: 'Glass display doors', kind: 'glass', width: inToMm(63), height: inToMm(75), headroom: inToMm(2), side: inToMm(1), temps: BOTH, handed: false },
 ];
+
+/**
+ * Glass display door series, from the ICC Glass Doors pages. All: aluminum outer
+ * frame, double sealed Low-E glass, self-closing, heated, LED lights, 110V 60Hz,
+ * mid- and low-temp, right-hand opening, custom sizes available.
+ */
+export interface GlassSeriesDef {
+  id: GlassSeries;
+  label: string;
+  /** Door frame construction. */
+  doorFrame: 'pvc' | 'aluminum' | 'frameless';
+  /** Per-door size. */
+  doorWidth: number;
+  doorHeight: number;
+  finishes: { id: GlassFinish; label: string; code: string }[];
+  handle: 'full-length' | 'bar-18';
+}
+
+export const GLASS_SERIES: readonly GlassSeriesDef[] = [
+  { id: 'select', label: 'Select Series', doorFrame: 'pvc', doorWidth: inToMm(30), doorHeight: inToMm(66), finishes: [{ id: 'BK', label: 'Glossy black', code: '' }], handle: 'full-length' },
+  {
+    id: 'elite',
+    label: 'Elite Series',
+    doorFrame: 'aluminum',
+    doorWidth: inToMm(30),
+    doorHeight: inToMm(72),
+    finishes: [
+      { id: 'BK', label: 'Black', code: 'BK' },
+      { id: 'AN', label: 'Anodized', code: 'AN' },
+    ],
+    handle: 'full-length',
+  },
+  {
+    id: 'signature',
+    label: 'Signature Series',
+    doorFrame: 'frameless',
+    doorWidth: inToMm(30),
+    doorHeight: inToMm(72),
+    finishes: [
+      { id: 'BK', label: 'Black', code: 'BK' },
+      { id: 'AN', label: 'Anodized', code: 'SV' },
+    ],
+    handle: 'bar-18',
+  },
+];
+
+export const getGlassSeries = (id: GlassSeries) => GLASS_SERIES.find((g) => g.id === id) ?? GLASS_SERIES[0];
+
+/** Outer frame around the doors of a glass unit, each side. */
+export const GLASS_FRAME = inToMm(1.5);
+
+/** Outside size of a glass unit: its doors plus the outer frame. */
+export function glassUnitSize(g: GlassParams): { width: number; height: number } {
+  const s = getGlassSeries(g.series);
+  return { width: g.count * s.doorWidth + 2 * GLASS_FRAME, height: s.doorHeight + 2 * GLASS_FRAME };
+}
+
+/**
+ * Space a door takes in its wall: the leaf for swing doors (34" × 78" man door,
+ * semi- or full-buried alike), the opening for the others, the whole unit for
+ * glass doors.
+ */
+export function doorSize(d: { family: DoorFamilyId; glass: GlassParams }): { width: number; height: number } {
+  if (d.family === 'glass') return glassUnitSize(d.glass);
+  const f = getDoorFamily(d.family);
+  return { width: f.width, height: f.height };
+}
 
 const families = new Map(DOOR_FAMILIES.map((f) => [f.id, f]));
 export function getDoorFamily(id: DoorFamilyId): DoorFamily {
@@ -119,7 +199,7 @@ export const DOOR_CLOSER_SKU = 'ICC-20SS';
  * has its hinges on the left (confirmed against the ICC door pages).
  */
 export function doorSku(
-  d: { family: DoorFamilyId; series: ManSeries; window: boolean; hinge: 'left' | 'right'; finish: TrafficFinish },
+  d: { family: DoorFamilyId; series: ManSeries; window: boolean; hinge: 'left' | 'right'; finish: TrafficFinish; glass: GlassParams },
   temperature: Temperature,
 ): string {
   const t = temperature === 'freezer' ? 'F' : 'C';
@@ -139,5 +219,20 @@ export function doorSku(
       return `ICC-DR-3684DS-${d.finish}`;
     case 'traffic-double':
       return `ICC-DR-7284DS-${d.finish}`;
+    case 'glass': {
+      const g = d.glass;
+      const s = getGlassSeries(g.series);
+      const code = s.finishes.find((f) => f.id === g.finish)?.code ?? s.finishes[0].code;
+      return ['ICC-GD', g.series.toUpperCase(), code, `${g.count}D`].filter(Boolean).join('-');
+    }
   }
+}
+
+/** Short tag shown on the plan and in lists: D1, D2… for doors, G1, G2… for glass door units. */
+export function doorTag(doors: readonly { id: string; family: DoorFamilyId }[], id: string): string {
+  const d = doors.find((x) => x.id === id);
+  if (!d) return '?';
+  const glass = d.family === 'glass';
+  const same = doors.filter((x) => (x.family === 'glass') === glass);
+  return `${glass ? 'G' : 'D'}${same.indexOf(d) + 1}`;
 }

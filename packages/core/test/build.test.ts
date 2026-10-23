@@ -5,6 +5,7 @@ import {
   buildCompartment,
   defaultCompartment,
   inToMm,
+  mmToIn,
   updateDoor,
   wallProfile,
   wallProfiles,
@@ -80,26 +81,32 @@ describe('buildCompartment', () => {
     expect(t.overall.height).toBeGreaterThan(inToMm(124));
   });
 
-  it('stands a semi-buried leaf proud of the wall and sets a full-buried one flush in a frame', () => {
+  it('builds semi- and full-buried leaves at exactly 34" × 78"', () => {
     const c = comp();
     const leafOf = (cc: Compartment) =>
       buildCompartment(cc, 'indoor').parts.find((p): p is BoxPart => p.kind === 'door-leaf' && p.id.endsWith(':leaf'))!;
     const semi = leafOf(c);
     const full = leafOf(updateDoor(c, 'd1', { series: '13478' }));
-    const T = c.wallThickness;
-    const frontZ = (b: BoxPart) => b.center[2] + b.size[2] / 2; // front wall faces +Z
-    const wallFace = inToMm(75) - 0; // footprint centred: front face at +depth/2
+    for (const leaf of [semi, full]) {
+      expect(mmToIn(leaf.size[0])).toBeCloseTo(34, 6);
+      expect(mmToIn(leaf.size[1])).toBeCloseTo(78, 6);
+      expect(leaf.center[0]).toBeCloseTo(semi.center[0], 6); // same place on the wall
+    }
+    // Semi-buried stands proud of the wall; full-buried sits flush.
+    const frontZ = (b: BoxPart) => b.center[2] + b.size[2] / 2;
+    const wallFace = inToMm(75);
     expect(frontZ(semi) - wallFace).toBeGreaterThan(inToMm(2));
     expect(Math.abs(frontZ(full) - wallFace)).toBeLessThan(10);
-    expect(semi.size[0]).toBeGreaterThan(inToMm(34)); // overlaps the opening
-    expect(full.size[0]).toBeLessThan(inToMm(34));
-    const fullTree = buildCompartment(updateDoor(c, 'd1', { series: '13478' }), 'indoor');
-    const frameOf = (t: typeof fullTree) => t.parts.find((p): p is BoxPart => p.kind === 'door-frame' && p.id.endsWith('frame-l'))!;
-    const semiFrame = frameOf(buildCompartment(c, 'indoor'));
-    const fullFrame = frameOf(fullTree);
-    expect(semiFrame.size[0]).toBeGreaterThan(fullFrame.size[0]); // heavier frame
-    expect(semiFrame.size[2]).toBeGreaterThan(fullFrame.size[2]); // further proud
-    expect(T).toBeGreaterThan(0);
+  });
+
+  it('gives semi-buried doors a heavier frame than full-buried', () => {
+    const c = comp();
+    const frameOf = (cc: Compartment) =>
+      buildCompartment(cc, 'indoor').parts.find((p): p is BoxPart => p.kind === 'door-frame' && p.id.endsWith('frame-l'))!;
+    const semi = frameOf(c);
+    const full = frameOf(updateDoor(c, 'd1', { series: '13478' }));
+    expect(semi.size[0]).toBeGreaterThan(full.size[0]);
+    expect(semi.size[2]).toBeGreaterThan(full.size[2]);
   });
 
   it('marks outside faces on outside corner posts only', () => {

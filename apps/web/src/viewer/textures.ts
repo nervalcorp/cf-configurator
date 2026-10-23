@@ -79,3 +79,22 @@ export function decalTexture(img: HTMLImageElement, background: string): THREE.T
   t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+
+/**
+ * The logo in white with its background removed, for printing on glass.
+ * Works with the ICC logo's classes (cls-3 is the navy background); for any
+ * other SVG it forces every fill to white, which is the intent anyway.
+ */
+export function whiteLogo(markup: string): string {
+  const style = '<style>*{fill:#fff!important;stroke:none!important}.cls-3{fill:none!important}</style>';
+  return markup.includes('</defs>') ? markup.replace('</defs>', `</defs>${style}`) : markup.replace(/<svg\b[^>]*>/i, (t) => t + style);
+}
+
+/** Logo on a transparent canvas, for decals that sit on glass. */
+export function transparentLogoTexture(img: HTMLImageElement): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = Math.round((512 * img.naturalHeight) / img.naturalWidth) || 328;
+  c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+  return canvasTexture(c);
+}

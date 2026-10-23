@@ -7,7 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { ComponentTree, Compartment, ExteriorFinish } from '@wic/core';
 import { activeBrand } from '../theme/brands';
 import { Materials } from './materials';
-import { badgeTexture, decalTexture, loadImage, svgDataUrl } from './textures';
+import { badgeTexture, decalTexture, loadImage, svgDataUrl, transparentLogoTexture, whiteLogo } from './textures';
 import { type Built, buildMeshes, disposeTree } from './buildMeshes';
 
 const MM = 0.001;
@@ -127,8 +127,21 @@ export class SceneController {
   setLogo(logo: string | null) {
     if (logo === this.badgeKey) return;
     this.badgeKey = logo;
-    if (!logo) return this.mats.setBadge(null);
-    const src = logo.trim().startsWith('<') ? svgDataUrl(logo) : logo;
+    if (!logo) {
+      this.mats.setGlassLogo(null);
+      return this.mats.setBadge(null);
+    }
+    const isSvg = logo.trim().startsWith('<');
+    const src = isSvg ? svgDataUrl(logo) : logo;
+    if (isSvg) {
+      loadImage(svgDataUrl(whiteLogo(logo)))
+        .then((img) => {
+          if (this.badgeKey !== logo) return;
+          this.mats.logoWhite.map?.dispose();
+          this.mats.setGlassLogo(transparentLogoTexture(img));
+        })
+        .catch(() => this.mats.setGlassLogo(null));
+    }
     loadImage(src)
       .then((img) => {
         if (this.badgeKey !== logo) return;
@@ -222,6 +235,7 @@ export class SceneController {
     if (this.built) disposeTree(this.built.root, this.keepSet());
     this.decalTex?.dispose();
     this.mats.badgeFace.map?.dispose();
+    this.mats.logoWhite.map?.dispose();
     this.mats.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

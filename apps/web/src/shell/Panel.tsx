@@ -7,12 +7,13 @@ import { DoorsTab } from '../tabs/DoorsTab';
 import { AccessoriesTab } from '../tabs/AccessoriesTab';
 import { ReviewTab } from '../tabs/ReviewTab';
 import { NotYetTab } from '../tabs/NotYetTab';
+import { GlassTab } from '../tabs/GlassTab';
 
 const PAGES: Record<TabId, () => React.ReactNode> = {
   layout: LayoutTab,
   finishes: FinishesTab,
   doors: DoorsTab,
-  glass: () => <NotYetTab what="Glass display doors" />,
+  glass: GlassTab,
   refrigeration: () => <NotYetTab what="Evaporator and condensing-unit selection" />,
   accessories: AccessoriesTab,
   review: ReviewTab,

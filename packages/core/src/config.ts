@@ -5,7 +5,7 @@
  */
 import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
-import type { DoorFamilyId, HandleId, ManSeries, TrafficFinish } from './catalog';
+import type { DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
 export const SCHEMA_VERSION = 3;
 
@@ -47,6 +47,8 @@ export interface Door {
   handle: HandleId;
   /** Traffic doors only. */
   finish: TrafficFinish;
+  /** Glass display door units only. */
+  glass: GlassParams;
 }
 
 export interface Compartment {
@@ -100,18 +102,18 @@ export const LIMITS = {
   },
 } as const;
 
-/** Base colour per finish. For `decal` it is the default background (the logo's navy). */
+/** Base colour per finish. For `decal` it is the default background. */
 export const FINISH_COLORS: Record<Exclude<ExteriorFinish, 'custom'>, string> = {
   white: '#f0f0f0',
   // CONFIRM: exact Grey White Coated colour.
   'grey-white': '#d6d8da',
-  decal: '#283442',
+  decal: '#ffffff',
 };
 
 export const defaultDecal = (): DecalParams => ({
   image: null,
-  background: FINISH_COLORS.decal,
-  tile: inToMm(30),
+  background: '#ffffff',
+  tile: inToMm(12),
   angle: 45,
 });
 
@@ -129,8 +131,8 @@ export function defaultCompartment(id = 'c1'): Compartment {
     // Wall 2 is the front edge of the default rectangle footprint.
     doors: [newDoor('d1', 2, inToMm(19))],
     finishes: {
-      exterior: 'white',
-      exteriorColor: FINISH_COLORS.white,
+      exterior: 'decal',
+      exteriorColor: '#ffffff',
       decal: defaultDecal(),
       floor: 'standard',
     },
@@ -151,6 +153,7 @@ export function newDoor(id: string, wall: number, offset: number): Door {
     closer: false,
     handle: 'included',
     finish: 'GR',
+    glass: { series: 'elite', finish: 'BK', count: 2 },
   };
 }
 

@@ -54,7 +54,7 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, flags: Map<str
   return { root, dims, pickable };
 }
 
-const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide']);
+const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide', 'glass']);
 
 function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
   switch (part.kind) {
@@ -80,7 +80,11 @@ function partMesh(part: Part, mats: Materials): THREE.Mesh | null {
     case 'door-leaf':
       return boxMesh(part, part.color ? tinted(mats.doorLeaf, part.color) : mats.doorLeaf);
     case 'door-frame':
-      return boxMesh(part, mats.frame);
+      return boxMesh(part, part.color ? tinted(mats.frame, part.color) : mats.frame);
+    case 'glass':
+      return boxMesh(part, mats.displayGlass);
+    case 'logo':
+      return boxMesh(part, mats.logoWhite);
     case 'threshold':
       return boxMesh(part, mats.threshold);
     case 'hinge':

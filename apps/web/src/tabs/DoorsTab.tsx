@@ -13,6 +13,7 @@ import {
   type TrafficFinish,
   addDoor,
   doorSku,
+  doorTag,
   framesFor,
   formatInches,
   getDoorFamily,
@@ -39,15 +40,16 @@ export function DoorsTab() {
   const selectedId = useStore((s) => s.ui.selectedDoor);
   const { editCompartment: edit, setUi } = useStore.getState();
   const frames = framesFor(c);
-  const sel = c.doors.find((d) => d.id === selectedId) ?? c.doors[0];
+  const doors = c.doors.filter((d) => d.family !== 'glass');
+  const sel = doors.find((d) => d.id === selectedId) ?? doors[0];
   const patch = (p: Partial<Door>) => sel && edit((x) => updateDoor(x, sel.id, p));
 
   return (
     <>
       <Section title="Doors on this compartment">
-        {c.doors.length ? (
+        {doors.length ? (
           <ul className="door-list">
-            {c.doors.map((d, k) => (
+            {doors.map((d) => (
               <li key={d.id}>
                 <button
                   type="button"
@@ -55,7 +57,7 @@ export function DoorsTab() {
                   aria-pressed={sel?.id === d.id}
                   onClick={() => setUi({ selectedDoor: d.id })}
                 >
-                  <span className="door-num">D{k + 1}</span>
+                  <span className="door-num">{doorTag(c.doors, d.id)}</span>
                   <span className="door-sku">{doorSku(d, c.temperature)}</span>
                   <span className="door-where">
                     Wall {frames[d.wall]?.letter ?? '?'} · {formatInches(d.offset)}
@@ -85,31 +87,31 @@ export function DoorsTab() {
               type="button"
               className="btn btn-ghost btn-danger"
               onClick={() => {
-                const rest = c.doors.filter((d) => d.id !== sel.id);
+                const rest = doors.filter((d) => d.id !== sel.id);
                 edit((x) => removeDoor(x, sel.id));
                 setUi({ selectedDoor: rest[0]?.id ?? null });
               }}
             >
-              Remove D{c.doors.indexOf(sel) + 1}
+              Remove {doorTag(c.doors, sel.id)}
             </button>
           )}
         </div>
       </Section>
 
       <Section title="Floor plan" hint="Drag a door along its wall, or click another wall to move it">
-        <FloorPlan mode="doors" />
+        <FloorPlan mode="doors" pick="doors" />
       </Section>
 
-      {sel && <DoorEditor key={sel.id} c={c} door={sel} index={c.doors.indexOf(sel) + 1} patch={patch} />}
+      {sel && <DoorEditor key={sel.id} c={c} door={sel} tag={doorTag(c.doors, sel.id)} patch={patch} />}
 
       <Section title="Catalog">
-        <p className="panel-note">Model numbers come from the {CATALOG_SOURCE}. Jamb guards, kickplates and pressure-relief vents have no ICC model yet, so they are not offered.</p>
+        <p className="panel-note">Model numbers come from the {CATALOG_SOURCE}. Jamb guards, kickplates and pressure-relief vents have no ICC model yet, so they are not offered. Glass display doors are on the next step.</p>
       </Section>
     </>
   );
 }
 
-function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; index: number; patch: (p: Partial<Door>) => void }) {
+function DoorEditor({ c, door, tag, patch }: { c: Compartment; door: Door; tag: string; patch: (p: Partial<Door>) => void }) {
     const { editCompartment: edit, commit } = useStore.getState();
     const frames = framesFor(c);
     const fam = getDoorFamily(door.family);
@@ -122,7 +124,7 @@ function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; ind
 
     return (
       <>
-        <Section title={`Door D${index}`} hint={doorSku(door, c.temperature)}>
+        <Section title={`Door ${tag}`} hint={doorSku(door, c.temperature)}>
           <label className="field">
             <span className="field-label">Type</span>
             <select
@@ -134,7 +136,7 @@ function DoorEditor({ c, door, index, patch }: { c: Compartment; door: Door; ind
                 edit((x) => moveDoor(updateDoor(x, door.id, { family }), door.id, door.wall, door.offset));
               }}
             >
-              {DOOR_FAMILIES.map((o) => (
+              {DOOR_FAMILIES.filter((o) => o.kind !== 'glass').map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>

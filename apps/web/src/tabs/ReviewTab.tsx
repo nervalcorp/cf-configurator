@@ -29,7 +29,7 @@ export function ReviewTab() {
       if (row) row.qty += 1;
       else map.set(sku, { sku, name, qty: 1 });
     };
-    tree.doors.forEach((d) => add(d.sku, 'Door'));
+    tree.doors.forEach((d) => add(d.sku, d.tag.startsWith('G') ? 'Glass door unit' : 'Door'));
     c.doors.forEach((d) => {
       if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
       if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
@@ -45,7 +45,8 @@ export function ReviewTab() {
     ['Overall height', `${formatFeetInches(tree.overall.height)} with floor and ceiling`],
     ['Exterior', FINISH_NAMES[c.finishes.exterior]],
     ['Floor', FLOOR_NAMES[c.finishes.floor]],
-    ['Doors', c.doors.length ? `${c.doors.length}` : 'None'],
+    ['Doors', `${c.doors.filter((d) => d.family !== 'glass').length || 'None'}`],
+    ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
     ['Ramp', c.accessories.ramp === 'none' ? 'None' : c.accessories.ramp === 'interior' ? 'Interior' : 'Exterior'],
   ];
 
@@ -111,7 +112,7 @@ export function ReviewTab() {
       </Section>
 
       {parts.length > 0 && (
-        <Section title="Doors and hardware" hint="ICC models, under audit">
+        <Section title="Doors, glass doors and hardware" hint="ICC models, under audit">
           <table className="part-table">
             <thead>
               <tr>

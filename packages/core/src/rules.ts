@@ -6,7 +6,7 @@
  */
 import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
-import { doorSku, getDoorFamily } from './catalog';
+import { doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from './catalog';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
 import { doorMinRun, doorSpan, offsetRange } from './layout/doors';
@@ -41,6 +41,11 @@ function normalizeDoor(d: Door, c: Compartment, front: number, wallLengths: numb
     closer: f.kind === 'swing' ? d.closer : false,
     swing: f.kind === 'swing' ? d.swing : 'out',
     handle: f.kind === 'swing' || f.kind === 'slide' ? d.handle : 'included',
+    glass: {
+      ...d.glass,
+      // Select is glossy black only.
+      finish: getGlassSeries(d.glass.series).finishes.some((x) => x.id === d.glass.finish) ? d.glass.finish : 'BK',
+    },
   };
   if (!f.temps.includes(c.temperature)) return next;
   // Keep the door on its wall when the wall shrinks (if it fits at all).
@@ -96,42 +101,45 @@ export function validateCompartment(c: Compartment): Issue[] {
       targets: targets ?? (ref ? [{ type: 'door', id: ref }] : undefined),
     });
 
-  if (c.doors.length === 0) {
+  if (!c.doors.some((d) => d.family !== 'glass')) {
     issues.push({ compartmentId: id, tab: 'doors', severity: 'warning', message: 'This compartment has no door.' });
   }
 
+  const nameOf = (x: Door) => `${x.family === 'glass' ? 'Glass doors' : 'Door'} ${doorTag(c.doors, x.id)} (${doorSku(x, c.temperature)})`;
   c.doors.forEach((d, k) => {
-    const name = `Door ${k + 1} (${doorSku(d, c.temperature)})`;
+    const name = nameOf(d);
+    const size = doorSize(d);
+    const tab: TabId = d.family === 'glass' ? 'glass' : 'doors';
     const f = getDoorFamily(d.family);
     const wall = frames[d.wall];
-    if (!wall) return err('doors', `${name} is not on a wall.`, d.id);
+    if (!wall) return err(tab, `${name} is not on a wall.`, d.id);
     if (!f.temps.includes(c.temperature)) {
-      err('doors', `${name} is for ${f.temps.join(' and ')}s only; this compartment is a ${c.temperature}.`, d.id);
+      err(tab, `${name} is for ${f.temps.join(' and ')}s only; this compartment is a ${c.temperature}.`, d.id);
     }
     if (f.panelHeight !== undefined) {
       if (Math.abs(wallH - f.panelHeight) > 0.5) {
-        err('doors', `${name} needs ${formatFeetInches(f.panelHeight)} wall panels; these are ${formatFeetInches(wallH)}. Set the panel height to ${formatFeetInches(f.panelHeight)} on the Layout step.`, d.id);
+        err(tab, `${name} needs ${formatFeetInches(f.panelHeight)} wall panels; these are ${formatFeetInches(wallH)}. Set the panel height to ${formatFeetInches(f.panelHeight)} on the Layout step.`, d.id);
       }
-    } else if (f.height + f.headroom > wallH + 0.01) {
-      err('doors', `${name} needs wall panels at least ${formatFeetInches(f.height + f.headroom)} high. Raise the panel height or pick a shorter door.`, d.id);
+    } else if (size.height + f.headroom > wallH + 0.01) {
+      err(tab, `${name} needs wall panels at least ${formatFeetInches(size.height + f.headroom)} high. Raise the panel height or pick a shorter door.`, d.id);
     }
     const [lo, hi] = offsetRange(d, wall.length);
     if (hi < lo) {
-      err('doors', `${name} needs ${formatInches(doorMinRun(d))} of wall; wall ${wall.letter} has ${formatInches(wall.length)} inside.`, d.id, [
+      err(tab, `${name} needs ${formatInches(doorMinRun(d))} of wall; wall ${wall.letter} has ${formatInches(wall.length)} inside.`, d.id, [
         { type: 'door', id: d.id },
         { type: 'wall', edge: d.wall },
       ]);
     } else if (d.offset < lo - 0.01 || d.offset > hi + 0.01) {
-      err('doors', `${name} runs past the end of wall ${wall.letter}.`, d.id);
+      err(tab, `${name} runs past the end of wall ${wall.letter}.`, d.id);
     }
     const mine = doorSpan(d);
-    c.doors.slice(k + 1).forEach((o, j) => {
+    c.doors.slice(k + 1).forEach((o) => {
       if (o.wall !== d.wall) return;
       const s = doorSpan(o);
       if (mine.from < s.to + LIMITS.doorGap && s.from < mine.to + LIMITS.doorGap) {
         err(
-          'doors',
-          `${name} and door ${k + j + 2} are too close on wall ${wall.letter}${f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide' ? ' (sliding doors need room to open)' : ''}.`,
+          tab,
+          `${name} and ${nameOf(o)} are too close on wall ${wall.letter}${f.kind === 'slide' || getDoorFamily(o.family).kind === 'slide' ? ' (sliding doors need room to open)' : ''}.`,
           d.id,
           [{ type: 'door', id: d.id }, { type: 'door', id: o.id }],
         );

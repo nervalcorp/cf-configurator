@@ -14,7 +14,7 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { DOOR_WINDOW, TRAFFIC_FINISHES, doorMount, doorSku, getDoorFamily } from '../catalog';
+import { DOOR_WINDOW, GLASS_FRAME, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
 import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
@@ -44,7 +44,9 @@ export type BoxKind =
   | 'badge'
   | 'gasket'
   | 'trim'
-  | 'latch';
+  | 'latch'
+  | 'glass'
+  | 'logo';
 
 export type Face = '+x' | '-x' | '+z' | '-z';
 
@@ -60,6 +62,8 @@ export interface BoxPart extends Base {
   color?: string;
   /** Show the brand logo on the front (local +Z) face. */
   logo?: boolean;
+  /** For kind 'logo': the logo in white with no background, as printed on glass. */
+  logoStyle?: 'white';
   joint?: number;
   doorId?: string;
 }
@@ -120,6 +124,8 @@ export interface WallSummary {
 export interface DoorSummary {
   id: string;
   index: number;
+  /** D1, D2… or G1, G2… */
+  tag: string;
   sku: string;
   wall: string;
   offset: number;
@@ -206,17 +212,26 @@ export function wallProfile(length: number, height: number, openings: [number, n
 
 /** Semi-buried doors have a heavier frame than full-buried ones. */
 const SEMI_FRAME = inToMm(3);
+/** How far a semi-buried leaf laps over its opening (and onto the frame). */
+const SEMI_OVERLAP = inToMm(1.5);
+/** Gasket line between a full-buried leaf and its frame. */
+const GASKET = 8;
 
 /** The hole a door needs in its wall: [from, to, height] along the wall's inside run. */
 function doorOpening(d: Door, wallH: number): [number, number, number] {
   const fam = getDoorFamily(d.family);
   const F = LIMITS.doorFrame;
+  const { width, height } = doorSize(d);
   const x0 = d.offset;
-  const x1 = d.offset + fam.width;
+  const x1 = d.offset + width;
   const mount = doorMount(d);
-  if (mount === 'semi-buried') return [x0 - SEMI_FRAME, x1 + SEMI_FRAME, fam.height + SEMI_FRAME];
-  if (fam.kind === 'rollup') return [x0 - F, x1 + F, Math.min(fam.height, wallH)];
-  return [x0 - F, x1 + F, fam.height + F];
+  // Semi-buried: the leaf (x0..x1) overlaps its opening by SEMI_OVERLAP; the frame surrounds the opening.
+  if (mount === 'semi-buried') return [x0 + SEMI_OVERLAP - SEMI_FRAME, x1 - SEMI_OVERLAP + SEMI_FRAME, height - SEMI_OVERLAP + SEMI_FRAME];
+  // Full-buried: gasket then frame around the leaf.
+  if (mount === 'full-buried') return [x0 - GASKET - F, x1 + GASKET + F, height + GASKET + F];
+  if (fam.kind === 'rollup') return [x0 - F, x1 + F, Math.min(height, wallH)];
+  if (fam.kind === 'glass') return [x0, x1, height];
+  return [x0 - F, x1 + F, height + F];
 }
 
 export function buildCompartment(c: Compartment, site: SiteType): ComponentTree {
@@ -283,8 +298,9 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
     const f = frames[d.wall];
     if (!f) return;
     const sku = doorSku(d, c.temperature);
-    const label = `Door ${k + 1} · ${sku}`;
-    doors.push({ id: d.id, index: k + 1, sku, wall: f.letter, offset: d.offset, label });
+    const tag = doorTag(c.doors, d.id);
+    const label = `${d.family === 'glass' ? 'Glass doors' : 'Door'} ${tag} · ${sku}`;
+    doors.push({ id: d.id, index: k + 1, sku, wall: f.letter, offset: d.offset, label, tag });
     parts.push(...doorParts(c, d, f, y0, label));
   });
 
@@ -359,8 +375,7 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
   const T = c.wallThickness;
   const F = LIMITS.doorFrame;
   const fam = getDoorFamily(d.family);
-  const W = fam.width;
-  const H = fam.height;
+  const { width: W, height: H } = doorSize(d);
   const x0 = d.offset;
   const x1 = d.offset + W;
   const mid = (x0 + x1) / 2;
@@ -402,39 +417,39 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     let front: number;
     let onWall: number; // w where hardware fixed to the wall or frame sits
 
+    // Both mounts use the same leaf: exactly W × H (34" × 78" for a man door).
+    leafTop = H;
+    hingeEdge = d.hinge === 'right' ? x1 : x0;
+    latchEdge = d.hinge === 'right' ? x0 : x1;
+
     if (mount === 'semi-buried') {
-      const OV = inToMm(1.5); // leaf overlap past the opening
-      const SLAB = inToMm(2.5); // leaf thickness standing proud of the wall
-      leafTop = H + OV;
-      hingeEdge = d.hinge === 'right' ? x1 + OV : x0 - OV;
-      latchEdge = d.hinge === 'right' ? x0 - OV : x1 + OV;
-      // Frame ring around the opening, heavier and further proud of the wall than a
-      // full-buried frame; the slab overlaps its inner half.
+      // The leaf stands proud of a heavy frame and laps over the opening behind it.
+      const OV = SEMI_OVERLAP;
       const SF = SEMI_FRAME;
+      const SLAB = inToMm(2.5);
       const proud = 20;
+      const o0 = x0 + OV;
+      const o1 = x1 - OV;
+      const oh = H - OV;
       onWall = T + proud;
-      out.push(box('door-frame', 'frame-l', x0 - SF / 2, (H + SF) / 2, (T + proud) / 2, [SF, H + SF, T + proud]));
-      out.push(box('door-frame', 'frame-r', x1 + SF / 2, (H + SF) / 2, (T + proud) / 2, [SF, H + SF, T + proud]));
-      out.push(box('door-frame', 'frame-t', mid, H + SF / 2, (T + proud) / 2, [W, SF, T + proud]));
-      // Plug inside the opening, then the slab standing proud of the frame.
       front = T + proud + SLAB;
-      out.push(box('door-leaf', 'plug', mid, H / 2, T / 2, [W - 6, H - 6, T]));
-      out.push(box('door-leaf', 'leaf', mid, leafTop / 2, T + proud + SLAB / 2, [W + 2 * OV, leafTop, SLAB], { label }));
+      out.push(box('door-frame', 'frame-l', o0 - SF / 2, (oh + SF) / 2, (T + proud) / 2, [SF, oh + SF, T + proud]));
+      out.push(box('door-frame', 'frame-r', o1 + SF / 2, (oh + SF) / 2, (T + proud) / 2, [SF, oh + SF, T + proud]));
+      out.push(box('door-frame', 'frame-t', (o0 + o1) / 2, oh + SF / 2, (T + proud) / 2, [o1 - o0, SF, T + proud]));
+      out.push(box('door-leaf', 'plug', (o0 + o1) / 2, oh / 2, T / 2, [o1 - o0 - 6, oh - 6, T]));
+      out.push(box('door-leaf', 'leaf', mid, H / 2, T + proud + SLAB / 2, [W, H, SLAB], { label }));
     } else {
-      // Full-buried: frame ring proud of the wall by 10 mm, leaf flush inside it, dark gasket between.
-      leafTop = H + F;
+      // The leaf sits flush in a frame proud of the wall by 10 mm, with a dark gasket around it.
+      const g = GASKET;
       front = T + 3;
-      hingeEdge = d.hinge === 'right' ? x1 : x0;
-      latchEdge = d.hinge === 'right' ? x0 : x1;
       onWall = T + 10;
-      out.push(box('door-frame', 'frame-l', x0 - F / 2, (H + F) / 2, T / 2 + 5, [F, H + F, T + 10]));
-      out.push(box('door-frame', 'frame-r', x1 + F / 2, (H + F) / 2, T / 2 + 5, [F, H + F, T + 10]));
-      out.push(box('door-frame', 'frame-t', mid, H + F / 2, T / 2 + 5, [W, F, T + 10]));
-      const g = 8;
-      out.push(box('gasket', 'gasket-l', x0 + g / 2, H / 2, T / 2 + 2, [g, H, T]));
-      out.push(box('gasket', 'gasket-r', x1 - g / 2, H / 2, T / 2 + 2, [g, H, T]));
-      out.push(box('gasket', 'gasket-t', mid, H - g / 2, T / 2 + 2, [W, g, T]));
-      out.push(box('door-leaf', 'leaf', mid, (H - g) / 2, T / 2 + 3, [W - 2 * g, H - g, T], { label }));
+      out.push(box('door-frame', 'frame-l', x0 - g - F / 2, (H + g + F) / 2, T / 2 + 5, [F, H + g + F, T + 10]));
+      out.push(box('door-frame', 'frame-r', x1 + g + F / 2, (H + g + F) / 2, T / 2 + 5, [F, H + g + F, T + 10]));
+      out.push(box('door-frame', 'frame-t', mid, H + g + F / 2, T / 2 + 5, [W + 2 * g, F, T + 10]));
+      out.push(box('gasket', 'gasket-l', x0 - g / 2, (H + g) / 2, T / 2 + 2, [g, H + g, T]));
+      out.push(box('gasket', 'gasket-r', x1 + g / 2, (H + g) / 2, T / 2 + 2, [g, H + g, T]));
+      out.push(box('gasket', 'gasket-t', mid, H + g / 2, T / 2 + 2, [W, g, T]));
+      out.push(box('door-leaf', 'leaf', mid, H / 2, T / 2 + 3, [W, H, T], { label }));
       out.push(box('gasket', 'sweep', mid, 15, front + 6, [W - 2 * g, 30, 12]));
     }
 
@@ -446,7 +461,7 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
       const v = leafTop * (1 - fr);
       out.push(box('hinge', `hinge-${k + 1}`, hingeEdge + inward * 120, v, front + 9, [240, 42, 18]));
       out.push(pin(`pin-${k + 1}`, hingeEdge + hs * 18, v, front + 6, 16, 120));
-      out.push(box('hinge', `hinge-base-${k + 1}`, hingeEdge + hs * 48, v, onWall + (front - onWall) / 2, [40, 130, front - onWall + 12]));
+      out.push(box('hinge', `hinge-base-${k + 1}`, hingeEdge + hs * 40, v, onWall + (front - onWall) / 2, [40, 130, front - onWall + 12]));
     });
 
     // Latch handle about mid height on the latch side, strike on the wall or frame.
@@ -455,7 +470,7 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     out.push(box('handle', 'handle-post-1', latchEdge - inward * 70, lv, front + 22, [22, 22, 44], { color: handle }));
     out.push(box('handle', 'handle-post-2', latchEdge - inward * 280, lv, front + 22, [22, 22, 44], { color: handle }));
     out.push(box('latch', 'latch', latchEdge - inward * 28, lv, front + 26, [60, 110, 52]));
-    out.push(box('latch', 'strike', latchEdge + inward * 40, lv, onWall + (front - onWall) / 2 + 10, [55, 90, front - onWall + 30]));
+    out.push(box('latch', 'strike', latchEdge + inward * 36, lv, onWall + (front - onWall) / 2 + 10, [55, 90, front - onWall + 30]));
 
     // Self closer (standard on these doors): vertical body across the top edge, latch side.
     const cu = hingeEdge + inward * span * (mount === 'semi-buried' ? 0.84 : 0.8);
@@ -514,6 +529,8 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     return out;
   }
 
+  if (fam.kind === 'glass') return glassParts(d, box, label, T, H, x0, x1);
+
   // Sliding and traffic doors: frame around the opening.
   const leafT = fam.kind === 'traffic' ? 38 : LIMITS.doorThickness;
   out.push(box('door-frame', 'frame-l', x0 - F / 2, H / 2, T / 2, [F, H, leafT]));
@@ -540,6 +557,108 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     out.push(box('door-leaf', 'leaf-r', x1 - lw / 2, H / 2, T / 2, [lw, H, leafT], { label, color }));
   } else {
     out.push(box('door-leaf', 'leaf', mid, H / 2, T / 2, [W - 6, H, leafT], { label, color }));
+  }
+  return out;
+}
+
+/** Colours per glass series and finish, read off the ICC Glass Doors photos. */
+function glassColors(series: string, finish: string) {
+  if (finish === 'AN') {
+    return series === 'signature'
+      ? { frame: '#c8ccd0', door: '#c8ccd0', frit: '#d3d6d8', rail: '#8f959b', handle: '#d2d6da' }
+      : { frame: '#b9bec3', door: '#c4c8cc', frit: '#c4c8cc', rail: '#6d7378', handle: '#c9cdd1' };
+  }
+  if (series === 'select') return { frame: '#141516', door: '#0f1011', frit: '#0f1011', rail: '#2a2c2e', handle: '#0f1011' };
+  if (series === 'signature') return { frame: '#1c1e20', door: '#1c1e20', frit: '#3b423f', rail: '#2c3033', handle: '#17181a' };
+  return { frame: '#222426', door: '#1c1e20', frit: '#1c1e20', rail: '#34373a', handle: '#1c1e20' };
+}
+
+/**
+ * Glass display door unit: aluminum outer frame, 2 or 3 doors, heater rails
+ * top and bottom with hinge pins, glass, handles and a small white logo on the
+ * last door. Hinges: 2-door units open from the centre (left door hinged left,
+ * right door hinged right); 3-door units hinge left, right, right, as the
+ * photos show.
+ */
+function glassParts(
+  d: Door,
+  box: (kind: BoxKind, name: string, u: number, v: number, w: number, size: Vec3, extra?: Partial<BoxPart>) => BoxPart,
+  label: string,
+  T: number,
+  H: number,
+  x0: number,
+  x1: number,
+): Part[] {
+  const out: Part[] = [];
+  const g = d.glass;
+  const s = getGlassSeries(g.series);
+  const col = glassColors(g.series, g.finish);
+  const FG = GLASS_FRAME;
+  const fw = T + 15; // front face of the outer frame and doors
+  const depth = T + 15;
+
+  // Outer frame
+  out.push(box('door-frame', 'g-frame-l', x0 + FG / 2, H / 2, depth / 2, [FG, H, depth], { color: col.frame, label }));
+  out.push(box('door-frame', 'g-frame-r', x1 - FG / 2, H / 2, depth / 2, [FG, H, depth], { color: col.frame, label }));
+  out.push(box('door-frame', 'g-frame-t', (x0 + x1) / 2, H - FG / 2, depth / 2, [x1 - x0 - 2 * FG, FG, depth], { color: col.frame, label }));
+  out.push(box('door-frame', 'g-frame-b', (x0 + x1) / 2, FG / 2, depth / 2, [x1 - x0 - 2 * FG, FG, depth], { color: col.frame, label }));
+  // Heater rails just inside the frame, top and bottom
+  out.push(box('trim', 'g-rail-t', (x0 + x1) / 2, H - FG - 9, fw - 12, [x1 - x0 - 2 * FG, 18, 20], { color: col.rail }));
+  out.push(box('trim', 'g-rail-b', (x0 + x1) / 2, FG + 9, fw - 12, [x1 - x0 - 2 * FG, 18, 20], { color: col.rail }));
+
+  const DW = s.doorWidth;
+  const DH = s.doorHeight;
+  const dv0 = FG;
+  const r = s.doorFrame === 'pvc' ? 45 : s.doorFrame === 'aluminum' ? 28 : 0;
+  const hingeSides: ('left' | 'right')[] = g.count === 2 ? ['left', 'right'] : ['left', 'right', 'right'];
+
+  for (let i = 0; i < g.count; i++) {
+    const du0 = x0 + FG + i * DW;
+    const du1 = du0 + DW;
+    const dm = (du0 + du1) / 2;
+    const vm = dv0 + DH / 2;
+    const gw = fw - 20; // glass centre
+    const n = `g${i + 1}`;
+    // Hinge pins: small white squares at the top corners of each door
+    out.push(box('trim', `${n}-pin`, i === 0 ? du0 + 8 : du0, H - FG / 2, fw + 2, [10, 10, 4], { color: '#f2f2f2' }));
+    if (i === g.count - 1) out.push(box('trim', `${n}-pin-end`, du1 - 8, H - FG / 2, fw + 2, [10, 10, 4], { color: '#f2f2f2' }));
+
+    if (r > 0) {
+      out.push(box('door-leaf', `${n}-stile-l`, du0 + r / 2, vm, fw - 20, [r, DH, 40], { color: col.door, label }));
+      out.push(box('door-leaf', `${n}-stile-r`, du1 - r / 2, vm, fw - 20, [r, DH, 40], { color: col.door, label }));
+      out.push(box('door-leaf', `${n}-top`, dm, dv0 + DH - r / 2, fw - 20, [DW - 2 * r, r, 40], { color: col.door, label }));
+      out.push(box('door-leaf', `${n}-bottom`, dm, dv0 + r / 2, fw - 20, [DW - 2 * r, r, 40], { color: col.door, label }));
+      out.push(box('glass', `${n}-glass`, dm, vm, gw, [DW - 2 * r, DH - 2 * r, 24], { label }));
+    } else {
+      // Frameless: glass edge to edge with a printed border.
+      const rf = 22;
+      out.push(box('glass', `${n}-glass`, dm, vm, gw, [DW - 6, DH - 6, 24], { label }));
+      const fz = gw + 13;
+      out.push(box('trim', `${n}-frit-l`, du0 + 3 + rf / 2, vm, fz, [rf, DH - 6, 2], { color: col.frit }));
+      out.push(box('trim', `${n}-frit-r`, du1 - 3 - rf / 2, vm, fz, [rf, DH - 6, 2], { color: col.frit }));
+      out.push(box('trim', `${n}-frit-t`, dm, dv0 + DH - 3 - rf / 2, fz, [DW - 6 - 2 * rf, rf, 2], { color: col.frit }));
+      out.push(box('trim', `${n}-frit-b`, dm, dv0 + 3 + rf / 2, fz, [DW - 6 - 2 * rf, rf, 2], { color: col.frit }));
+    }
+
+    // Handle on the latch edge
+    const latchRight = hingeSides[i] === 'left';
+    const lu = latchRight ? du1 : du0;
+    const intoDoor = latchRight ? -1 : 1;
+    if (s.handle === 'full-length') {
+      out.push(box('handle', `${n}-handle`, lu + intoDoor * Math.max(r / 2, 14), vm, fw + 14, [22, DH - 240, 26], { color: col.handle }));
+    } else {
+      const hu = lu + intoDoor * 45;
+      const len = inToMm(18);
+      out.push(box('handle', `${n}-handle`, hu, vm, fw + 26, [20, len, 20], { color: col.handle }));
+      out.push(box('handle', `${n}-standoff-t`, hu, vm + len / 2 - 25, fw + 8, [16, 16, 22], { color: col.handle }));
+      out.push(box('handle', `${n}-standoff-b`, hu, vm - len / 2 + 25, fw + 8, [16, 16, 22], { color: col.handle }));
+    }
+
+    // White logo, top right of the last door
+    if (i === g.count - 1) {
+      const inset = Math.max(r, 22) + 70;
+      out.push(box('logo', 'g-logo', du1 - inset, dv0 + DH - inset + 10, gw + 13, [125, 80, 1], { logoStyle: 'white' }));
+    }
   }
   return out;
 }
