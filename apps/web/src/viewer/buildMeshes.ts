@@ -55,7 +55,7 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
     }
     const mesh = partMesh(part, mats, skin);
     if (!mesh) continue;
-    mesh.castShadow = part.kind !== 'roof';
+    mesh.castShadow = part.kind !== 'roof' && part.kind !== 'evap-throw';
     mesh.receiveShadow = true;
     const problems = flags.get(part.id);
     mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined, problems };
@@ -131,10 +131,26 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
     case 'curtain':
       return boxMesh(part, part.color ? tinted(mats.curtain, part.color) : mats.curtain);
     case 'hinge-pin':
-    case 'cable': {
-      const seg = part.kind === 'cable' && part.radius > 8 ? 6 : 12; // the gland is a hex nut
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(part.radius, part.radius, part.height, seg), part.kind === 'cable' ? mats.cable : mats.chrome);
+    case 'cable':
+    case 'fan': {
+      const seg = part.kind === 'cable' && part.radius > 8 ? 6 : part.kind === 'fan' ? 32 : 12; // the gland is a hex nut
+      const geo = new THREE.CylinderGeometry(part.radius, part.radius, part.height, seg);
+      if (part.axis === 'z') geo.rotateX(Math.PI / 2);
+      const mat = part.kind === 'fan' ? mats.fanGuard : part.kind === 'cable' ? mats.cable : mats.chrome;
+      const m = new THREE.Mesh(geo, mat);
       m.position.set(...part.center);
+      if (part.rotationY) m.rotation.y = part.rotationY;
+      return m;
+    }
+    case 'evap-housing':
+    case 'evap-pan':
+      return boxMesh(part, mats.evapHousing);
+    case 'evap-coil':
+      return boxMesh(part, mats.coil);
+    case 'evap-throw': {
+      const m = boxMesh(part, part.color === '#e11d48' ? mats.throwOver : mats.throwZone);
+      m.userData.throw = true;
+      m.castShadow = false;
       return m;
     }
     case 'plate':

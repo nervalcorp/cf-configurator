@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -87,6 +87,19 @@ export interface ShelvingUnit {
   gravity: string[];
 }
 
+/**
+ * An evaporator hung at the ceiling against a wall, blowing into the room.
+ * `offset` is the centre along the wall's inside run; `gap` is the clear space
+ * between the wall and the back of the unit.
+ */
+export interface Evaporator {
+  id: string;
+  model: string;
+  wall: number;
+  offset: number;
+  gap: number;
+}
+
 export interface ControlParams {
   model: ControlModel;
   wall: number;
@@ -128,6 +141,8 @@ export interface Compartment {
     checker: CheckerSquare[];
     shelving: ShelvingUnit[];
   };
+  /** Refrigeration tab: evaporators at the ceiling. */
+  evaporators: Evaporator[];
   /** Refrigeration tab: the walk-in controller. */
   control: ControlParams;
 }
@@ -192,6 +207,7 @@ export function defaultCompartment(id = 'c1', name = 'Compartment 1'): Compartme
       floor: 'standard',
     },
     accessories: { ramp: 'exterior', checker: [], shelving: [] },
+    evaporators: [],
     // Beside door d1 (latch side, hinged right) at eye level.
     control: { model: 'TSC2000', wall: 2, offset: inToMm(8), height: inToMm(60) },
   };
@@ -238,11 +254,12 @@ export function defaultConfiguration(): Configuration {
  * v5 → v6: shelving inside compartments.
  * v6 → v7: the door closer (ICC-20SS) is a fitted part, on by default; older
  * swing doors had it drawn as standard, so they get it switched on.
+ * v7 → v8: evaporators.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, 3, 4, 5, 6, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, 4, 5, 6, 7, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -279,6 +296,7 @@ export function migrate(input: unknown): Configuration {
           checker: c.accessories?.checker ?? [],
           shelving: c.accessories?.shelving ?? [],
         },
+        evaporators: c.evaporators ?? [],
         // wall -1 asks normalize() to place it beside the first door.
         control: c.control ?? { ...base.control, wall: -1 },
       };

@@ -356,3 +356,96 @@ export const SHELVING = {
   gravityLabel: 'Gravity flow shelf tray',
   defaultHeight: inToMm(84),
 };
+
+/**
+ * ICC evaporators (unit coolers), from the ICC Evaporator pages. All R448A,
+ * 220V 60Hz, pre-installed TXV, larger fin gaps, service door, easy-replace fans.
+ * Coolers (EVC) rated at 25°F evap / 105°F cond with electric heaters on mid temp;
+ * freezers (EVF) at -10°F evap / 105°F cond with 1 kW defrost heaters.
+ *
+ * CONFIRM, values that look off on the pages: EVC1000 lists the same 1 fan and
+ * 1523 CFM as EVC500; EVC2000-4000 share one airflow; EVF3000 lists TES2-5 below
+ * EVF2000's TES2-6; heater counts are blank on EVF2000-4000.
+ *
+ * Sizes are ESTIMATES from fan count and fan size until the spec sheets arrive:
+ * fan diameter from airflow (1523 CFM ≈ 12", 2302 ≈ 14", 4073 ≈ 18"); length =
+ * fans × (fan + 6") + 10"; height = fan + 6"; depth 16" (18" fans: 20").
+ */
+export type EvapLine = 'cooler' | 'freezer';
+
+export interface EvaporatorDef {
+  sku: string;
+  line: EvapLine;
+  btu: number;
+  fans: number;
+  cfmPerFan: number;
+  volts: string;
+  minCircuit: number;
+  txv: string;
+  heaters?: string;
+  /** Estimated size: along the wall, height, depth off the wall. */
+  length: number;
+  height: number;
+  depth: number;
+  fanDiameter: number;
+  sizeEstimated: boolean;
+}
+
+function evap(sku: string, line: EvapLine, btu: number, fans: number, cfmPerFan: number, volts: string, minCircuit: number, txv: string, heaters?: string): EvaporatorDef {
+  const fan = cfmPerFan >= 4000 ? 18 : cfmPerFan >= 2000 ? 14 : 12;
+  return {
+    sku,
+    line,
+    btu,
+    fans,
+    cfmPerFan,
+    volts,
+    minCircuit,
+    txv,
+    heaters,
+    length: inToMm(fans * (fan + 6) + 10),
+    height: inToMm(fan + 6),
+    depth: inToMm(fan >= 18 ? 20 : 16),
+    fanDiameter: inToMm(fan),
+    sizeEstimated: true,
+  };
+}
+
+export const EVAPORATORS: readonly EvaporatorDef[] = [
+  evap('ICC-EVC500', 'cooler', 5830, 1, 1523, '220V/1ph/60Hz', 15, 'TES2-1'),
+  evap('ICC-EVC1000', 'cooler', 10580, 1, 1523, '220V/1ph/60Hz', 15, 'TES2-3'),
+  evap('ICC-EVC1500', 'cooler', 17119, 1, 2302, '220V/1ph/60Hz', 15, 'TES2-3'),
+  evap('ICC-EVC2000', 'cooler', 20782, 2, 2302, '220V/1ph/60Hz', 15, 'TES2-3'),
+  evap('ICC-EVC3000', 'cooler', 28948, 2, 2302, '220V/1ph/60Hz', 15, 'TES2-4'),
+  evap('ICC-EVC4000', 'cooler', 41037, 2, 2302, '220V/1ph/60Hz', 15, 'TES2-5'),
+  evap('ICC-EVF1000', 'freezer', 9534, 1, 2302, '220V/1ph/60Hz', 20, 'TES2-3', '1 kW × 3'),
+  evap('ICC-EVF1500', 'freezer', 15406, 2, 2302, '220V/1ph/60Hz', 25, 'TES2-5', '1 kW × 3'),
+  evap('ICC-EVF2000', 'freezer', 21495, 2, 4073, '220V/3ph/60Hz', 40, 'TES2-6', '1 kW × 6'),
+  evap('ICC-EVF3000', 'freezer', 32684, 2, 4073, '220V/3ph/60Hz', 40, 'TES2-5', '1 kW × 6'),
+  evap('ICC-EVF4000', 'freezer', 39579, 3, 4073, '220V/3ph/60Hz', 40, 'TES2-6', '1 kW × 6'),
+];
+
+export const getEvaporator = (sku: string) => EVAPORATORS.find((e) => e.sku === sku) ?? EVAPORATORS[2];
+
+/** The model a new unit starts with; the customer picks the real one. */
+export const DEFAULT_EVAPORATOR: Record<EvapLine, string> = { cooler: 'ICC-EVC1500', freezer: 'ICC-EVF1500' };
+
+/**
+ * Placement rules of thumb (from John's research notes):
+ * - never directly over a door; blow toward the door or down the main aisle
+ * - rear gap at least the coil height, and never under 12"
+ * - one unit throws about 25' (20' comfortable); covers about 15' of width
+ * - keep product 12" clear of the unit
+ * - all units in one room on one controller
+ */
+export const EVAP_RULES = {
+  throwMax: inToMm(25 * 12),
+  throwComfort: inToMm(20 * 12),
+  coverWidth: inToMm(15 * 12),
+  minRearGap: inToMm(12),
+  productClear: inToMm(12),
+  /** Keep the unit this far either side of a door opening on its wall. */
+  doorMargin: inToMm(12),
+  /** Hung this far below the ceiling. */
+  ceilingGap: inToMm(1),
+};

@@ -114,6 +114,14 @@ Some products are modelled from artwork John supplies: one SVG with the product 
 
 Door hardware takes a `standoff` (how far the leaf face stands in front of the frame face) so the same artwork fits semi- and full-buried doors; each distinct fit is built once and shared. A soft studio environment gives polished stainless real reflections.
 
+## Evaporators
+
+On the Refrigeration step (above the controller). Eleven ICC models: coolers ICC-EVC500 to EVC4000 (1 or 2 fans) and freezers ICC-EVF1000 to EVF4000 (1, 2 or 3 fans); a compartment offers the line for its temperature and swaps to the nearest-capacity model when the temperature changes. The rules decide how many units and where; the customer picks the model.
+
+Rules encoded (`layout/evaporators.ts`, `EVAP_RULES`): never over a door (no unit on a door's wall within 12" of the opening); rear gap at least the coil height and never under 12"; one unit throws up to 25' (20' comfortable) and covers about 15' of width; keep shelving 12" clear of the unit; flag two units blowing at each other in a short room; flag headroom under 6' 6". Errors tint the unit red with the reason on hover; warnings show on Review.
+
+**Add evaporator** puts one unit in the best open spot: the ceiling spot whose air reaches the most floor not yet reached, preferring the wall facing the main door so it blows toward it. **Suggest layout** builds the full set: it adds units that way until about all of the floor is within 20' of one (never suggesting a spot that throws past 25'), spaces units sharing a wall into equal sections, then drops any unit the others already cover. This gives one unit for small rooms, two for rooms 20'-40' long or more than 15' wide, and a unit for the leg of an L-shaped room. Units can be dragged along the ceiling on the plan or onto another wall; throw zones show on the ceiling while on the Refrigeration step. Unit sizes are estimated from fan count until the spec sheets arrive.
+
 ## Controller
 
 One per compartment, on the Refrigeration step. ICC-TSC2000 Smart Control (4½" wide, 1" deep, about 4¼" tall at the artwork's proportions; Wi-Fi and app), modelled from its artwork, or ICC-TC1000 Temperature Controller (about 4¼" × 2" × ½", estimated). It starts beside the first door on its latch side, 4" clear of the hardware, centred at 5' 0" (eye level), and can move to any wall, left or right, and between 3' 4" and 5' 6" high. It is flagged when it sits over or within ½" of a door opening.

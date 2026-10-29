@@ -206,6 +206,11 @@ canvas { display: block; }
 .btn-link { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 12.5px; cursor: pointer; padding: 0; margin-top: 12px; }
 .btn-link:hover { text-decoration: underline; }
 
+/* evaporators */
+.inline-flag { display: inline-block; margin-left: 6px; vertical-align: middle; box-shadow: none; }
+.summary.spec { margin-top: 12px; }
+.wall-chip:disabled { opacity: .35; cursor: not-allowed; }
+
 /* shelving */
 .gravity-grid { display: grid; gap: 4px; padding: 8px; background: var(--input-bg); border: 1.5px solid var(--border); border-radius: var(--radius); }
 .gravity-cell {

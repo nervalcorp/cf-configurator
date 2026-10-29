@@ -32,6 +32,12 @@ export class Materials {
   shelfSteel = new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.55, metalness: 0.25 });
   wireShelf = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.2, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide });
   priceTag = new THREE.MeshStandardMaterial({ color: 0xe8f0f4, roughness: 0.2, transparent: true, opacity: 0.55 });
+  /** Evaporator: brushed stainless housing, black fan guards, dark coil, and the throw zone. */
+  evapHousing = new THREE.MeshStandardMaterial({ color: 0xdfe3e6, roughness: 0.35, metalness: 0.5 });
+  fanGuard = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.55, metalness: 0.2 });
+  coil = new THREE.MeshStandardMaterial({ color: 0x6b7177, roughness: 0.7, metalness: 0.4 });
+  throwZone = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide });
+  throwOver = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
   /** Floor glow under the compartment being edited. */
   glow = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.55, depthWrite: false });
   glowSoft = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.16, depthWrite: false });
@@ -105,12 +111,12 @@ export class Materials {
   }
 
   private meshMaterials() {
-    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.concrete, this.rampBody, this.rampGrit, this.rampSlot, this.shelfSteel, this.wireShelf, this.priceTag, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
+    return [this.exterior, this.exteriorPlain, this.badgeBody, this.badgeFace, this.logoWhite, this.displayGlass, this.checker, this.screenTSC, this.screenTC, this.cable, this.concrete, this.rampBody, this.rampGrit, this.rampSlot, this.shelfSteel, this.wireShelf, this.priceTag, this.evapHousing, this.fanGuard, this.coil, this.roof, this.interior, this.floor, this.doorLeaf, this.frame, this.threshold, this.chrome, this.glass, this.track, this.curtain, this.highlight];
   }
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
   shared(): THREE.Material[] {
-    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag, this.glow, this.glowSoft];
+    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag, this.glow, this.glowSoft, this.throwZone, this.throwOver];
   }
 
   dispose() {
@@ -118,6 +124,8 @@ export class Materials {
     this.edge.dispose();
     this.dimLine.dispose();
     this.flag.dispose();
+    this.throwZone.dispose();
+    this.throwOver.dispose();
   }
 }
 

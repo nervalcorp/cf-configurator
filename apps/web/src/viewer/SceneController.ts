@@ -159,6 +159,7 @@ export class SceneController {
           if (o.userData.label) o.userData.label = `${comp.name} · ${o.userData.label}`;
         });
       }
+      group.traverse((o) => o.userData.throw && (o.visible = this.showThrow));
       this.model.add(group);
       this.built.set(comp.id, { ...built, group });
       const { width, depth, height } = tree.overall;
@@ -274,6 +275,13 @@ export class SceneController {
         place(skin.decalTex);
       })
       .catch(() => place(null));
+  }
+
+  /** Show evaporator throw zones (on the Refrigeration step). */
+  private showThrow = false;
+  setShowThrow(on: boolean) {
+    this.showThrow = on;
+    for (const b of this.built.values()) b.group.traverse((o) => o.userData.throw && (o.visible = on));
   }
 
   setDims(on: boolean) {

@@ -6,9 +6,10 @@
  */
 import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
-import { CONTROL_HEIGHT, GLASS_MAX_ELEVATION, SHELVING, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
+import { CONTROL_HEIGHT, EVAPORATORS, GLASS_MAX_ELEVATION, SHELVING, getEvaporator, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
 import { controlBlocked, defaultControlPlacement, squareBlocker } from './layout/fixtures';
 import { shelvingBlocker } from './layout/shelving';
+import { checkEvaporator } from './layout/evaporators';
 import { overlappingCompartments } from './compartments';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
@@ -104,7 +105,17 @@ export function normalizeCompartment(c: Compartment): Compartment {
     });
     return { ...u, bays, levels, postHeight, top, bottom, gravity };
   });
-  const withShelves = { ...withDoors, accessories: { ...withDoors.accessories, shelving } };
+  // Evaporators follow the compartment's temperature: a cooler model in a freezer
+  // swaps to the freezer model nearest in capacity, and back.
+  const line = base.temperature;
+  const evaporators = base.evaporators.map((e) => {
+    const def = getEvaporator(e.model);
+    if (def.line === line && def.sku === e.model) return e;
+    const options = EVAPORATORS.filter((x) => x.line === line);
+    const nearest = options.reduce((a, b) => (Math.abs(b.btu - def.btu) < Math.abs(a.btu - def.btu) ? b : a));
+    return { ...e, model: nearest.sku };
+  });
+  const withShelves = { ...withDoors, evaporators, accessories: { ...withDoors.accessories, shelving } };
   return { ...withShelves, control: normalizeControl(withShelves, lengths) };
 }
 
@@ -219,6 +230,20 @@ export function validateCompartment(c: Compartment): Issue[] {
     if (why) {
       err('accessories', `Shelving ${u.id.replace('sh', 'S')} is ${why}. Move it on the Accessories step.`, undefined, [{ type: 'part', id: `${c.id}:shelf-${u.id}` }]);
     }
+  });
+
+  if (!c.evaporators.length) {
+    issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: 'This compartment has no evaporator.' });
+  }
+  c.evaporators.forEach((e) => {
+    const tag = e.id.replace('ev', 'E');
+    const sku = getEvaporator(e.model).sku;
+    const chk = checkEvaporator(c, e);
+    const target = [{ type: 'part' as const, id: `${c.id}:evap-${e.id}` }];
+    chk.errors.forEach((m) => err('refrigeration', `Evaporator ${tag} (${sku}) ${m}.`, undefined, target));
+    chk.warnings.forEach((m) =>
+      issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `Evaporator ${tag} (${sku}) ${m}.`, targets: target }),
+    );
   });
 
   const ctl = getControl(c.control.model);

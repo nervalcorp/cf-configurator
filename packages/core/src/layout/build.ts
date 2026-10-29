@@ -14,12 +14,13 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { CHECKER_PLATE, DOOR_CLOSER_SKU, DOOR_WINDOW, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { CHECKER_PLATE, DOOR_CLOSER_SKU, DOOR_WINDOW, EVAP_RULES, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
 import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
 import { BAY_PITCH, facingVector, gravityKey, shelfHeights, shelvingSize } from './shelving';
+import { evaporatorPlan, evaporatorThrow } from './evaporators';
 import { GASKET, SEMI_FRAME, SEMI_OVERLAP, doorOpening } from './doors';
 
 export type Vec3 = readonly [number, number, number];
@@ -59,7 +60,11 @@ export type BoxKind =
   | 'shelf-bracket'
   | 'price-tag'
   | 'gravity-bed'
-  | 'gravity-divider';
+  | 'gravity-divider'
+  | 'evap-housing'
+  | 'evap-coil'
+  | 'evap-pan'
+  | 'evap-throw';
 
 export type Face = '+x' | '-x' | '+z' | '-z';
 
@@ -91,10 +96,13 @@ export interface BoxPart extends Base {
 }
 
 export interface CylinderPart extends Base {
-  kind: 'hinge-pin' | 'cable';
+  kind: 'hinge-pin' | 'cable' | 'fan';
   center: Vec3;
   radius: number;
   height: number;
+  /** 'z' lays the cylinder on its side, facing local +z, turned by rotationY. */
+  axis?: 'y' | 'z';
+  rotationY?: number;
   doorId?: string;
 }
 
@@ -401,6 +409,9 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
 
   // ── Shelving inside ──
   for (const u of c.accessories.shelving) parts.push(...shelvingParts(c, u, b, fTop));
+
+  // ── Evaporators at the ceiling ──
+  for (const e of c.evaporators) parts.push(...evaporatorParts(c, e, b, fTop, wallH));
 
   // ── Controller ──
   const ctl = getControl(c.control.model);
@@ -930,5 +941,51 @@ function shelvingParts(c: Compartment, u: Compartment['accessories']['shelving']
       out.push(box('price-tag', `tag-${n}`, cx, SD / 2 + 3, y - 14 - (SD / 2) * sin, [SW, 32, 3], { color: undefined, label: 'Price tag holder' }));
     });
   }
+  return out;
+}
+
+/**
+ * Evaporator, as a simple model until artwork arrives: stainless housing, one
+ * round fan guard (with hub) per fan on the side facing the room, coil fins on
+ * the back, drain pan underneath, and a flat "throw" zone on the ceiling showing
+ * how far its air reaches (teal, or red past the 25' limit).
+ */
+function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], b: { cx: number; cy: number }, fTop: number, wallH: number): Part[] {
+  const p = evaporatorPlan(c, e);
+  if (!p.frame) return [];
+  const def = p.def;
+  const into = p.into;
+  const along: Vec2 = [p.frame.u[0], p.frame.u[1]];
+  // Local frame: x along the wall, z toward the room (the way it blows), y up.
+  const rot = Math.atan2(into[0], into[1]);
+  const top = fTop + wallH - EVAP_RULES.ceilingGap;
+  const cy = top - def.height / 2;
+  const at = (lx: number, lz: number, y: number): Vec3 => [p.center[0] - b.cx + along[0] * lx * -1 + into[0] * lz, y, p.center[1] - b.cy + along[1] * lx * -1 + into[1] * lz];
+  const id = (s: string) => `${c.id}:evap-${e.id}:${s}`;
+  const label = `Evaporator ${e.id.replace('ev', 'E')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h`;
+  const D = def.depth;
+  const out: Part[] = [];
+  out.push({ kind: 'evap-housing', id: id('housing'), center: at(0, 0, cy), size: [def.length, def.height, D], rotationY: rot, label });
+  out.push({ kind: 'evap-coil', id: id('coil'), center: at(0, -D / 2 - 6, cy), size: [def.length - 40, def.height - 30, 12], rotationY: rot, label });
+  out.push({ kind: 'evap-pan', id: id('pan'), center: at(0, 0, top - def.height - 12), size: [def.length + 20, 24, D + 20], rotationY: rot, label });
+  const pitch = def.length / def.fans;
+  for (let i = 0; i < def.fans; i++) {
+    const lx = -def.length / 2 + pitch * (i + 0.5);
+    out.push({ kind: 'fan', id: id(`fan-${i + 1}`), center: at(lx, D / 2 + 8, cy), radius: def.fanDiameter / 2, height: 16, axis: 'z', rotationY: rot, label });
+    out.push({ kind: 'fan', id: id(`hub-${i + 1}`), center: at(lx, D / 2 + 20, cy), radius: def.fanDiameter * 0.14, height: 30, axis: 'z', rotationY: rot, label });
+  }
+  // Throw zone just under the ceiling: as wide as one unit covers, as long as the air travels.
+  const t = evaporatorThrow(c, e);
+  const reach = Math.min(t, EVAP_RULES.throwMax);
+  const over = t > EVAP_RULES.throwMax;
+  out.push({
+    kind: 'evap-throw',
+    id: id('throw'),
+    center: at(0, D / 2 + reach / 2, top - 4),
+    size: [Math.min(EVAP_RULES.coverWidth, def.length * 2.2), 2, reach],
+    rotationY: rot,
+    color: over ? '#e11d48' : '#14b8c8',
+    label: `${label} · throws ${Math.round(t / 304.8)}'`,
+  });
   return out;
 }

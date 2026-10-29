@@ -56,6 +56,8 @@ export function Viewer() {
   }, [entries, activeId]);
 
   useEffect(() => ctrl.current?.setDims(showDims), [showDims]);
+  const tab = useStore((s) => s.ui.tab);
+  useEffect(() => ctrl.current?.setShowThrow(tab === 'refrigeration'), [tab, entries]);
   useEffect(() => ctrl.current?.setWireframe(wireframe), [wireframe]);
   useEffect(() => ctrl.current?.setAutoRotate(autoRotate), [autoRotate]);
   useEffect(() => ctrl.current?.setLightOrbit(lightOrbit), [lightOrbit]);

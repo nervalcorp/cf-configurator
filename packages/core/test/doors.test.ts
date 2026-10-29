@@ -43,7 +43,7 @@ describe('placing doors', () => {
     expect(id).toBe('d2');
     expect(b.wall).toBe(a.wall);
     expect(doorSpan(b).from).toBeGreaterThanOrEqual(doorSpan(a).to);
-    expect(validateCompartment(c)).toEqual([]);
+    expect(validateCompartment(c).filter((i) => i.severity === 'error')).toEqual([]);
   });
 
   it('spills onto another wall when the front is full', () => {
@@ -51,7 +51,7 @@ describe('placing doors', () => {
     for (let i = 0; i < 4; i++) c = addDoor(c).compartment;
     const walls = new Set(c.doors.map((d) => d.wall));
     expect(walls.size).toBeGreaterThan(1);
-    expect(validateCompartment(c)).toEqual([]);
+    expect(validateCompartment(c).filter((i) => i.severity === 'error')).toEqual([]);
   });
 
   it('moves a door to a side wall, as close as it can to the asked position', () => {
@@ -104,15 +104,16 @@ describe('door rules', () => {
   it('allows the roll-up only in a cooler with 120" panels', () => {
     const base = { ...defaultCompartment(), boxW: inToMm(180) };
     const c = updateDoor(base, 'd1', { family: 'rollup', offset: inToMm(30) });
-    expect(validateCompartment({ ...c, height: inToMm(120) })).toEqual([]);
+    expect(validateCompartment({ ...c, height: inToMm(120) }).filter((i) => i.severity === 'error')).toEqual([]);
     expect(validateCompartment({ ...c, height: inToMm(118) }).some((i) => /120|10' 0"/.test(i.message))).toBe(true);
     expect(validateCompartment({ ...c, height: inToMm(120), temperature: 'freezer' }).some((i) => /coolers only/.test(i.message))).toBe(true);
   });
 
   it('warns when there is no door', () => {
     const issues = validateCompartment({ ...defaultCompartment(), doors: [] });
-    expect(issues).toHaveLength(1);
-    expect(issues[0].severity).toBe('warning');
+    const door = issues.filter((i) => /no door/.test(i.message));
+    expect(door).toHaveLength(1);
+    expect(door[0].severity).toBe('warning');
   });
 
   it('keeps doors on their wall when the box shrinks', () => {

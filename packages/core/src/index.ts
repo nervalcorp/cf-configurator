@@ -12,3 +12,4 @@ export * from './layout/flags';
 export * from './layout/fixtures';
 export * from './compartments';
 export * from './layout/shelving';
+export * from './layout/evaporators';

@@ -62,7 +62,7 @@ describe('glass door units', () => {
     const { c, id } = withGlass({ count: 3 });
     const d = c.doors.find((x) => x.id === id)!;
     expect(mmToIn(doorSize(d).width)).toBeCloseTo(93, 6);
-    expect(validateCompartment(c)).toEqual([]);
+    expect(validateCompartment(c).filter((i) => i.severity === 'error')).toEqual([]);
   });
 
   it('builds one glass pane and handle per door, frameless without door rails', () => {
@@ -86,6 +86,6 @@ describe('glass door units', () => {
     const { c } = withGlass();
     const issues = validateCompartment({ ...c, height: inToMm(90), boxW: inToMm(96) });
     expect(issues.length).toBeGreaterThan(0);
-    expect(issues.filter((i) => i.ref !== 'd1').every((i) => i.tab === 'glass')).toBe(true);
+    expect(issues.filter((i) => i.ref && i.ref !== 'd1').every((i) => i.tab === 'glass')).toBe(true);
   });
 });

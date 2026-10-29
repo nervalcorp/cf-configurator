@@ -44,6 +44,8 @@ interface UI {
   selectedDoor: string | null;
   /** Shelving unit being edited on the Accessories tab. */
   selectedShelf: string | null;
+  /** Evaporator being edited on the Refrigeration tab. */
+  selectedEvap: string | null;
 }
 
 interface State {
@@ -95,6 +97,7 @@ export const useStore = create<State>((set, get) => {
       active: initial.compartments[0].id,
       selectedDoor: initial.compartments[0].doors[0]?.id ?? null,
       selectedShelf: null,
+      selectedEvap: null,
     },
 
     editCompartment: (fn, opts) => {
@@ -152,7 +155,7 @@ export const useStore = create<State>((set, get) => {
     setActive: (id) => {
       const c = get().config.compartments.find((x) => x.id === id);
       if (!c) return;
-      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null, selectedShelf: c.accessories.shelving[0]?.id ?? null } }));
+      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null, selectedShelf: c.accessories.shelving[0]?.id ?? null, selectedEvap: c.evaporators[0]?.id ?? null } }));
     },
 
     addCompartment: () => {

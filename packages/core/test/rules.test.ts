@@ -27,12 +27,12 @@ describe('normalize', () => {
 
 describe('validate', () => {
   it('accepts the default compartment', () => {
-    expect(validateCompartment(defaultCompartment())).toEqual([]);
+    expect(validateCompartment(defaultCompartment()).filter((i) => i.severity === 'error')).toEqual([]);
   });
   it('flags a door that runs past the wall and sends the user to Doors', () => {
     const c = defaultCompartment();
     const issues = validateCompartment({ ...c, boxW: inToMm(72), doors: [{ ...c.doors[0], offset: inToMm(40) }] });
-    expect(issues.map((i) => [i.tab, i.ref])).toEqual([['doors', 'd1']]);
+    expect(issues.filter((i) => i.severity === 'error').map((i) => [i.tab, i.ref])).toEqual([['doors', 'd1']]);
   });
 });
 
@@ -82,7 +82,7 @@ describe('migrate', () => {
     const v1 = { schema: 1, site: { type: 'indoor' }, compartments: [{ ...defaultCompartment(), doors: undefined, door: { width: 863.6, offset: 400, hinge: 'left' } }] };
     const cfg = normalize(migrate(v1));
     const d = cfg.compartments[0].doors[0];
-    expect(cfg.schema).toBe(7);
+    expect(cfg.schema).toBe(8);
     expect([d.wall, d.hinge, d.family]).toEqual([2, 'left', 'man']);
     expect(d.offset).toBeCloseTo(400, 6);
   });
