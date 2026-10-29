@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -207,7 +207,8 @@ export function newDoor(id: string, wall: number, offset: number): Door {
     window: false,
     hinge: 'right',
     swing: 'out',
-    closer: false,
+    // The ICC-20SS door closer is fitted by default.
+    closer: true,
     handle: 'included',
     finish: 'GR',
     glass: { series: 'elite', finish: 'BK', count: 2 },
@@ -235,11 +236,13 @@ export function defaultConfiguration(): Configuration {
  * v4 → v5: compartments got a name and a site position; the interior ramp was
  * withdrawn (it becomes the exterior ramp).
  * v5 → v6: shelving inside compartments.
+ * v6 → v7: the door closer (ICC-20SS) is a fitted part, on by default; older
+ * swing doors had it drawn as standard, so they get it switched on.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, 3, 4, 5, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, 4, 5, 6, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -253,7 +256,12 @@ export function migrate(input: unknown): Configuration {
         // v1 doors were always on the front wall; normalize() moves wall -1 to the front edge.
         doors = [{ ...newDoor('d1', -1, c.door?.offset ?? base.doors[0].offset), hinge: c.door?.hinge ?? 'right' }];
       } else {
-        doors = (c.doors ?? []).map((d, k) => ({ ...newDoor(`d${k + 1}`, -1, 0), ...d }));
+        doors = (c.doors ?? []).map((d, k) => ({
+          ...newDoor(`d${k + 1}`, -1, 0),
+          ...d,
+          // Before v7 the closer was drawn on every swing door as standard.
+          ...((raw.schema as number) < 7 && (d.family === 'man' || d.family === 'pallet') ? { closer: true } : {}),
+        }));
       }
       const { door: _legacy, ...rest } = c;
       return {

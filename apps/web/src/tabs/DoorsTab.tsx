@@ -3,6 +3,7 @@ import {
   type Compartment,
   CATALOG_SOURCE,
   DOOR_CLOSER_SKU,
+  HINGE_KIT,
   DOOR_FAMILIES,
   type Door,
   type DoorFamilyId,
@@ -255,8 +256,10 @@ function DoorEditor({ c, door, tag, patch }: { c: Compartment; door: Door; tag: 
           <Section title="Hardware">
             {fam.kind === 'swing' && (
               <>
-                <p className="panel-note first">Cam-lift hinges and a self closer come with the door.</p>
-                <Switch label={`Add a hydraulic closer (${DOOR_CLOSER_SKU})`} checked={door.closer} onChange={(v) => patch({ closer: v })} />
+                <p className="panel-note first">
+                  {HINGE_KIT.perDoor} cam-lift hinge kits ({HINGE_KIT.sku(door.hinge)}) come with the door.
+                </p>
+                <Switch label={`Door closer (${DOOR_CLOSER_SKU})`} checked={door.closer} onChange={(v) => patch({ closer: v })} />
               </>
             )}
             <label className="field">

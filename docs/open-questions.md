@@ -2,9 +2,7 @@
 
 ## Doors
 
-- **Self closer vs ICC-20SS.** The man and pallet door pages list a self closer as standard, and the 3D doors show it. ICC-20SS is still offered as an add-on hydraulic closer. Keep it, or remove the toggle?
 - **Not in the ICC catalog.** Jamb guards, kickplates, pressure-relief vents and strip curtains have no model yet, so they are not offered.
-- **Hinge kits.** ICC-1238SL/SR hinges are not added to the part list; assumed included with the door.
 
 ## Shelving
 
@@ -14,7 +12,10 @@
 
 - **TSC2000 height.** At 4.5" wide the artwork's proportions make the housing about 4¼" tall; the spec says 4". Kept the artwork's shape.
 - **Ids in future artwork.** Naming the shapes (`id="housing"`, `"boot"`, `"cable"`, `"gland"`, or `"hinge"`, `"handle"`…) lets recipes match parts by name instead of order.
-- **Next:** hinges, knobs, pull handles, latches and similar hardware from John's SVGs, counted as accessories in the part list.
+- **Hinge size.** Scaled to 9" from pin to strap tip; confirm against the ICC-1238 spec.
+- **Closer size.** Scaled to a 2" wide body (about 9" long); confirm against the ICC-20SS spec.
+- **Hinge kit quantity.** One ICC-1238SL/SR per hinge, three per swing door. Is a kit one hinge?
+- **Next:** knobs, pull handles, latches and similar hardware from John's SVGs, counted as accessories in the part list.
 
 ## Compartments and ramps
 
@@ -46,6 +47,9 @@
 - **Footer logo.** The ICC logo is only on door badges and decals so far. Put it in the footer too?
 
 ## Resolved
+
+- **Door closer** (2026-10-29). "Self closer" is the ICC-20SS Door Closer: fitted to swing doors by default, switchable, counted in the part list, modelled from artwork.
+- **Hinge kits in the part list** (2026-10-29). ICC-1238SL/SR, three per swing door, modelled from artwork.
 
 - **Gravity flow tray model** (2026-10-24). ICC-GRAVITY-SHELF.
 - **Shelving quantity** (2026-10-24). Sold on its own by quantity, one per bay, with or without glass doors.

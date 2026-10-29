@@ -14,7 +14,7 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { CHECKER_PLATE, DOOR_WINDOW, GLASS_FRAME, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { CHECKER_PLATE, DOOR_CLOSER_SKU, DOOR_WINDOW, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
 import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
@@ -117,6 +117,11 @@ export interface ModelPart extends Base {
   model: string;
   center: Vec3;
   rotationY: number;
+  /** Mirror left-right (right-hand hardware drawn from left-hand artwork). */
+  mirror?: boolean;
+  /** Fit parameters for the model, e.g. standoff in mm. */
+  params?: Record<string, number>;
+  doorId?: string;
 }
 
 /**
@@ -478,7 +483,7 @@ const STAINLESS = '#c9cdd1';
  *
  * Swing doors follow the ICC door photos: three cam-lift hinges (two high, one
  * low) on the swing side, a latch handle at about mid height on the other
- * side, the self closer at the top on the latch side, and the brand badge
+ * side, the door closer (ICC-20SS) at the top on the latch side, and the brand badge
  * high on the leaf. Fractions below are measured off those photos.
  */
 function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: string): Part[] {
@@ -506,14 +511,6 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     rotationY: rot,
     doorId: d.id,
     ...extra,
-  });
-  const pin = (name: string, u: number, v: number, w: number, r: number, h: number): CylinderPart => ({
-    kind: 'hinge-pin',
-    id: id(name),
-    center: at(u, v, w),
-    radius: r,
-    height: h,
-    doorId: d.id,
   });
 
   const out: Part[] = [];
@@ -569,14 +566,25 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     // Hinge bases and the strike sit in the middle of the frame showing beside the leaf.
     const frameMid = mount === 'semi-buried' ? (SEMI_FRAME - SEMI_OVERLAP) / 2 : GASKET + F / 2;
     const inward = -hs; // from the hinge edge toward the latch edge, along u
-    // Cam-lift hinges: strap on the leaf, knuckle at the edge, base plate on the wall or frame.
+    // Cam-lift hinge kits (ICC-1238SL/SR), modelled from artwork: base plate on the
+    // middle of the frame strip, strap on the leaf. The artwork is a left-hand hinge;
+    // right-hand doors mirror it. `standoff` is how far the leaf face stands in front
+    // of the frame face, so the strap sits on the leaf and the plate on the frame.
     const hingeFracs = mount === 'semi-buried' ? [0.13, 0.285, 0.895] : [0.13, 0.27, 0.83];
+    const standoff = front - onWall;
+    const sku = HINGE_KIT.sku(d.hinge);
     hingeFracs.forEach((fr, k) => {
-      const v = leafTop * (1 - fr);
-      out.push(box('hinge', `hinge-${k + 1}`, hingeEdge + inward * 120, v, front + 9, [240, 42, 18]));
-      out.push(pin(`pin-${k + 1}`, hingeEdge + hs * 18, v, front + 6, 16, 120));
-      out.push(box('hinge', `hinge-base-${k + 1}`, hingeEdge + hs * frameMid, v, onWall + (front - onWall) / 2, [40, 130, front - onWall + 12]));
-      out.push(box('hinge', `hinge-arm-${k + 1}`, hingeEdge + (hs * frameMid) / 2, v, front - 8, [frameMid, 30, 16]));
+      out.push({
+        kind: 'model',
+        id: id(`hinge-${k + 1}`),
+        model: 'HINGE-1238',
+        center: at(hingeEdge + hs * frameMid, leafTop * (1 - fr), onWall),
+        rotationY: rot,
+        mirror: d.hinge === 'right',
+        params: { standoff },
+        label: `${HINGE_KIT.label} ${sku}`,
+        doorId: d.id,
+      });
     });
 
     // Latch handle about mid height on the latch side, strike on the wall or frame.
@@ -587,10 +595,21 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
     out.push(box('latch', 'latch', latchEdge - inward * 28, lv, front + 26, [60, 110, 52]));
     out.push(box('latch', 'strike', latchEdge + inward * frameMid, lv, onWall + (front - onWall) / 2 + 10, [50, 90, front - onWall + 30]));
 
-    // Self closer (standard on these doors): vertical body across the top edge, latch side.
-    const cu = hingeEdge + inward * span * (mount === 'semi-buried' ? 0.84 : 0.8);
-    out.push(box('latch', 'self-closer', cu, leafTop - 10, front + 22, [42, 170, 44], { label: 'Self closer' }));
-    out.push(box('latch', 'self-closer-base', cu, leafTop + 50, onWall + 12, [70, 50, 24]));
+    // Door closer (ICC-20SS), modelled from artwork: body on the leaf below its top
+    // edge on the latch side, catch bracket on the frame above.
+    if (d.closer) {
+      const cu = hingeEdge + inward * span * (mount === 'semi-buried' ? 0.84 : 0.8);
+      out.push({
+        kind: 'model',
+        id: id('closer'),
+        model: 'CLOSER-20SS',
+        center: at(cu, leafTop, front),
+        rotationY: rot,
+        params: { standoff: front - onWall },
+        label: `Door closer ${DOOR_CLOSER_SKU}`,
+        doorId: d.id,
+      });
+    }
 
     // Brand badge high on the leaf; higher when a window takes its place.
     const badgeV = d.window ? leafTop * (1 - 0.09) : leafTop * (1 - 0.2);
@@ -610,10 +629,6 @@ function doorParts(c: Compartment, d: Door, f: WallFrame, y0: number, label: str
       out.push(box('trim', 'window-trim-b', mid, wv - wh / 2 - t / 2, front + 4, [ww, t, 8], { color: '#f6f6f4' }));
     }
 
-    if (d.closer) {
-      // Optional hydraulic closer (ICC-20SS) near the top of the hinge side.
-      out.push(box('closer', 'closer', hingeEdge + inward * 260, leafTop - 110, front + 34, [280, 55, 65], { label: 'Door closer ICC-20SS' }));
-    }
     return out;
   }
 

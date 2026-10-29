@@ -68,7 +68,7 @@ const FRAME = inToMm(2);
 /**
  * Space beside and above a swing door: the overlap of a semi-buried leaf or the
  * frame of a full-buried one, plus hinge knuckles on one side and the latch
- * strike on the other, and the self closer above.
+ * strike on the other, and the door closer above.
  */
 const SWING_SIDE = inToMm(4.5);
 const SWING_HEAD = inToMm(5);
@@ -191,8 +191,18 @@ export const TRAFFIC_FINISHES: { id: TrafficFinish; label: string; color: string
   { id: 'BK', label: 'Black', color: '#2a2c30' },
 ];
 
-/** Optional add-on. The man and pallet doors already list a self closer as standard. */
+/** Door closer fitted to swing doors (on by default), modelled from its artwork. */
 export const DOOR_CLOSER_SKU = 'ICC-20SS';
+
+/**
+ * Cam-lift hinge kit, one per hinge, three per swing door. L or R is the door's
+ * swing side seen from outside. CONFIRM: one kit = one hinge.
+ */
+export const HINGE_KIT = {
+  label: 'Cam-lift hinge kit',
+  perDoor: 3,
+  sku: (hinge: 'left' | 'right') => (hinge === 'left' ? 'ICC-1238SL' : 'ICC-1238SR'),
+};
 
 /**
  * Model number for a door. L/R is the swing side seen from outside: an L door

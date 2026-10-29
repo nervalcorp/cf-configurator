@@ -80,6 +80,7 @@ describe('compartments', () => {
     expect(c.name).toBe('Compartment 1');
     expect(c.position).toEqual({ x: 0, z: 0 });
     expect(c.accessories.ramp).toBe('exterior');
+    expect(c.doors[0].closer).toBe(true); // closer was standard before v7
   });
 });
 

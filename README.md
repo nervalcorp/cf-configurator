@@ -106,7 +106,13 @@ Aluminum checker plate is placed by the square foot: 1' × 1' squares on a 1-ft 
 
 ## Products built from artwork
 
-Some products are modelled from artwork John supplies: one SVG with the product photo as an `<image>` and a vector shape over each part, in the same coordinates. `apps/web/src/viewer/productModels.ts` reads it with three.js's SVGLoader, turns each shape into 3D by its role (extruded housing, raised glass face, tapered boot, cable, hex gland…) and projects the photo onto every part from the SVG's x/y, so the model's face is the photo. Shapes are matched by `id` when they have one (`id="housing"`), otherwise by order. Add a product by dropping its SVG in `apps/web/src/assets/products/` and adding a recipe (roles, real width, depths). The ICC-TSC2000 Smart Control is the first.
+Some products are modelled from artwork John supplies: one SVG with the product photo as an `<image>` and a vector shape over each part, in the same coordinates. `apps/web/src/viewer/productModels.ts` reads it with three.js's SVGLoader, turns each shape into 3D by its role (extruded housing, raised glass face, tapered boot, cable, hex gland…) and projects the photo onto every part from the SVG's x/y, so the model's face is the photo. Shapes are matched by `id` when they have one (`id="housing"`), otherwise by order. Add a product by dropping its SVG in `apps/web/src/assets/products/` and adding a recipe (roles, real width, depths). Built so far:
+
+- **ICC-TSC2000 Smart Control**: housing, raised glass face, boot, cable, gland.
+- **ICC-1238SL/SR cam-lift hinge** (`hardwareModels.ts`): base plate on the frame, pin block, pin barrel with cap, strap with raised spine on the leaf, screw heads. Drawn left-hand; right-hand doors mirror it. Three per swing door, in the part list.
+- **ICC-20SS door closer**: body with top cap and mounting tabs on the leaf; catch bracket with ears, channel and hood on the frame above; arm and black roller from the angled photo. Fitted to swing doors by default (switch on the Doors step), in the part list.
+
+Door hardware takes a `standoff` (how far the leaf face stands in front of the frame face) so the same artwork fits semi- and full-buried doors; each distinct fit is built once and shared. A soft studio environment gives polished stainless real reflections.
 
 ## Controller
 

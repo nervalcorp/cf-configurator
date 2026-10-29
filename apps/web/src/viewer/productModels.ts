@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import tsc2000Svg from '../assets/products/tsc2000.svg?raw';
+import { type Built, buildCloser, buildHinge } from './hardwareModels';
 
 type Role = 'housing' | 'boot' | 'cable' | 'gland';
 
@@ -217,11 +218,29 @@ function buildTemplate(id: string): Template | null {
   };
 }
 
+/** Door hardware built from artwork, keyed by model and fit (standoff in mm). */
+const HARDWARE: Record<string, (p: Record<string, number>) => Built> = {
+  'HINGE-1238': (p) => buildHinge(p.standoff ?? 0),
+  'CLOSER-20SS': (p) => buildCloser(p.standoff ?? 0),
+};
+const hardware = new Map<string, Built>();
+
 /**
  * A copy of a product model (shares geometry, materials and texture with the
- * cached template). Null when there is no recipe for the id.
+ * cached template). `params` select a fit (e.g. how far a door stands proud of
+ * its frame); each distinct fit is built once. Null when there is no recipe.
  */
-export function productModel(id: string): THREE.Object3D | null {
+export function productModel(id: string, params: Record<string, number> = {}): THREE.Object3D | null {
+  const make = HARDWARE[id];
+  if (make) {
+    const key = `${id}|${Object.entries(params).map(([k, v]) => `${k}=${Math.round(v)}`).join(',')}`;
+    let b = hardware.get(key);
+    if (!b) {
+      b = make(params);
+      hardware.set(key, b);
+    }
+    return b.object.clone(true);
+  }
   let t = templates.get(id);
   if (!t) {
     const built = buildTemplate(id);
@@ -233,7 +252,7 @@ export function productModel(id: string): THREE.Object3D | null {
 }
 
 export function hasProductModel(id: string): boolean {
-  return id in RECIPES;
+  return id in RECIPES || id in HARDWARE;
 }
 
 export function disposeProductModels() {
@@ -243,4 +262,9 @@ export function disposeProductModels() {
     t.texture.dispose();
   }
   templates.clear();
+  for (const b of hardware.values()) {
+    b.geometries.forEach((g) => g.dispose());
+    b.materials.forEach((m) => m.dispose());
+  }
+  hardware.clear();
 }

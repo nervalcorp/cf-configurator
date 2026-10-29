@@ -10,6 +10,7 @@ import {
   wallProfile,
   wallProfiles,
   type BoxPart,
+  type ModelPart,
   type Compartment,
   type WallPart,
 } from '../src';
@@ -69,10 +70,15 @@ describe('buildCompartment', () => {
     const right = buildCompartment(comp(), 'indoor');
     const c = comp();
     const left = buildCompartment(updateDoor(c, c.doors[0].id, { hinge: 'left' }), 'indoor');
-    const hx = (t: typeof right) => (t.parts.find((p) => p.kind === 'hinge') as BoxPart).center[0];
-    const leaf = right.parts.find((p) => p.kind === 'door-leaf') as BoxPart;
-    expect(hx(right)).toBeGreaterThan(leaf.center[0]);
-    expect(hx(left)).toBeLessThan(leaf.center[0]);
+    const hinge = (t: typeof right) => t.parts.find((p): p is ModelPart => p.kind === 'model' && p.model === 'HINGE-1238')!;
+    const leaf = right.parts.find((p) => p.id.endsWith(':leaf')) as BoxPart;
+    expect(hinge(right).center[0]).toBeGreaterThan(leaf.center[0]);
+    expect(hinge(left).center[0]).toBeLessThan(leaf.center[0]);
+    // The artwork is a left-hand hinge, so right-hand doors mirror it.
+    expect(hinge(right).mirror).toBe(true);
+    expect(hinge(left).mirror).toBe(false);
+    expect(hinge(right).label).toMatch(/ICC-1238SR/);
+    expect(hinge(left).label).toMatch(/ICC-1238SL/);
   });
 
   it('builds walls at the full panel height', () => {
@@ -116,10 +122,19 @@ describe('buildCompartment', () => {
     expect(posts.filter((p) => p.exteriorFaces!.length === 0)).toHaveLength(1);
   });
 
-  it('gives swing doors three cam-lift hinges and a self closer', () => {
+  it('gives swing doors three hinge kits and the door closer, built from artwork', () => {
     const t = buildCompartment(comp(), 'indoor');
-    expect(t.parts.filter((p) => p.kind === 'hinge-pin')).toHaveLength(3);
-    expect(t.parts.some((p) => p.id.endsWith('self-closer'))).toBe(true);
+    const models = t.parts.filter((p): p is ModelPart => p.kind === 'model').map((p) => p.model);
+    expect(models.filter((m) => m === 'HINGE-1238')).toHaveLength(3);
+    expect(models.filter((m) => m === 'CLOSER-20SS')).toHaveLength(1);
+  });
+
+  it('gives the hinge and closer the gap between leaf and frame faces', () => {
+    const c = comp();
+    const semi = buildCompartment(c, 'indoor').parts.find((p): p is ModelPart => p.kind === 'model' && p.model === 'HINGE-1238')!;
+    const full = buildCompartment(updateDoor(c, 'd1', { series: '13478' }), 'indoor').parts.find((p): p is ModelPart => p.kind === 'model' && p.model === 'HINGE-1238')!;
+    expect(semi.params!.standoff).toBeCloseTo(inToMm(2.5), 6); // semi-buried leaf stands 2.5" proud of its frame
+    expect(full.params!.standoff).toBeLessThan(0); // full-buried frame is proud of the leaf
   });
 
   it('splits the wall around a full-height roll-up opening', () => {
@@ -133,11 +148,12 @@ describe('buildCompartment', () => {
   });
 
   it('adds closer and window parts only when chosen', () => {
-    const c = comp();
+    const c = updateDoor(comp(), 'd1', { closer: false });
+    const isCloser = (p: { kind: string; model?: string }) => p.kind === 'model' && p.model === 'CLOSER-20SS';
     const plain = buildCompartment(c, 'indoor');
-    expect(plain.parts.some((p) => p.kind === 'closer' || p.kind === 'window')).toBe(false);
+    expect(plain.parts.some((p) => isCloser(p as never) || p.kind === 'window')).toBe(false);
     const dressed = buildCompartment(updateDoor(c, 'd1', { closer: true, series: '13478', window: true }), 'indoor');
-    expect(dressed.parts.some((p) => p.kind === 'closer')).toBe(true);
+    expect(dressed.parts.some((p) => isCloser(p as never))).toBe(true);
     expect(dressed.parts.some((p) => p.kind === 'window')).toBe(true);
     expect(dressed.doors[0].sku).toBe('ICC-DR-13478CRW');
   });

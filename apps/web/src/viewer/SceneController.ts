@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { type ComponentTree, type Compartment, type ExteriorFinish, offsetPolygon } from '@wic/core';
 import { activeBrand } from '../theme/brands';
 import { Materials, Skin } from './materials';
@@ -27,6 +28,7 @@ export class SceneController {
   private key = new THREE.DirectionalLight(0xffffff, 2.2);
   private mats = new Materials();
   private model = new THREE.Group();
+  private envMap: THREE.Texture;
   /** One built group per compartment, keyed by compartment id. */
   private built = new Map<string, Built & { group: THREE.Group }>();
   private skins = new Map<string, Skin>();
@@ -63,6 +65,13 @@ export class SceneController {
 
     const brand = activeBrand.scene;
     this.scene.background = new THREE.Color(brand.background);
+    // A soft studio room for reflections, so polished stainless and chrome read as metal.
+    // Kept low so painted and powder-coated surfaces look as before.
+    const pmrem = new THREE.PMREMGenerator(r);
+    this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    this.scene.environment = this.envMap;
+    this.scene.environmentIntensity = 0.35;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xb0b8c4, 1.1));
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
     const k = this.key;
@@ -345,6 +354,7 @@ export class SceneController {
     this.mats.screenTSC.map?.dispose();
     this.mats.screenTC.map?.dispose();
     this.mats.dispose();
+    this.envMap.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

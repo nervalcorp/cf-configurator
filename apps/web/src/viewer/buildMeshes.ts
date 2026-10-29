@@ -30,10 +30,12 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
   for (const part of tree.parts) {
     if (part.kind === 'model') {
       // Product built from artwork: every mesh in it is pickable and can be flagged.
-      const obj = productModel(part.model);
+      const obj = productModel(part.model, part.params);
       if (!obj) continue;
       obj.position.set(...part.center);
       obj.rotation.y = part.rotationY;
+      // Mirrored for right-hand hardware; three.js flips face winding for negative scale.
+      if (part.mirror) obj.scale.x = -1;
       const problems = flags.get(part.id);
       obj.traverse((o) => {
         if (!(o instanceof THREE.Mesh)) return;

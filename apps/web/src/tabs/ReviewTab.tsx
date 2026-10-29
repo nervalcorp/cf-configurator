@@ -4,6 +4,8 @@ import {
   type Compartment,
   type ComponentTree,
   DOOR_CLOSER_SKU,
+  HINGE_KIT,
+  getDoorFamily,
   HANDLES,
   RAMP,
   SHELVING,
@@ -42,6 +44,7 @@ function partsOf(c: Compartment, tree: ComponentTree, into: Map<string, Row>) {
   };
   tree.doors.forEach((d) => add(d.sku, d.tag.startsWith('G') ? 'Glass door unit' : 'Door'));
   c.doors.forEach((d) => {
+    if (getDoorFamily(d.family).kind === 'swing') add(HINGE_KIT.sku(d.hinge), HINGE_KIT.label, HINGE_KIT.perDoor);
     if (d.closer) add(DOOR_CLOSER_SKU, 'Door closer');
     if (d.handle !== 'included') add(d.handle, HANDLES.find((h) => h.id === d.handle)?.label.replace(/ \(.*\)$/, '') ?? 'Handle');
   });
