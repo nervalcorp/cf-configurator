@@ -57,7 +57,11 @@ export function Viewer() {
 
   useEffect(() => ctrl.current?.setDims(showDims), [showDims]);
   const tab = useStore((s) => s.ui.tab);
+  const airflow = useStore((s) => s.ui.airflow);
+  const throwOpacity = useStore((s) => s.ui.throwOpacity);
   useEffect(() => ctrl.current?.setShowThrow(tab === 'refrigeration'), [tab, entries]);
+  useEffect(() => ctrl.current?.setAirflow(tab === 'refrigeration' && airflow), [tab, airflow]);
+  useEffect(() => ctrl.current?.setThrowOpacity(throwOpacity), [throwOpacity]);
   useEffect(() => ctrl.current?.setWireframe(wireframe), [wireframe]);
   useEffect(() => ctrl.current?.setAutoRotate(autoRotate), [autoRotate]);
   useEffect(() => ctrl.current?.setLightOrbit(lightOrbit), [lightOrbit]);

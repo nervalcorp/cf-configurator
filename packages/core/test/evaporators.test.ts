@@ -15,6 +15,9 @@ import {
   updateEvaporator,
   validateCompartment,
   type Compartment,
+  type ModelPart,
+  type ZonePart,
+  offsetPolygon,
 } from '../src';
 
 const ft = (n: number) => inToMm(n * 12);
@@ -103,12 +106,49 @@ describe('evaporator rules', () => {
     expect(f.evaporators[0].model).toBe('ICC-EVF1500');
   });
 
-  it('builds a housing, one fan per fan, and a throw zone', () => {
+  it('builds the unit from artwork (with its fan count) and a throw zone', () => {
     const { compartment: c } = addEvaporator(defaultCompartment(), 'ICC-EVC2000');
     const t = buildCompartment(c, 'indoor');
-    const ev = t.parts.filter((p) => p.id.includes(':evap-'));
-    expect(ev.filter((p) => p.kind === 'fan' && p.id.includes('fan-'))).toHaveLength(2);
-    expect(ev.some((p) => p.kind === 'evap-throw')).toBe(true);
+    const model = t.parts.find((p): p is ModelPart => p.kind === 'model' && p.model === 'EVAPORATOR')!;
+    expect(model.params!.fans).toBe(2);
+    expect(t.parts.some((p) => p.kind === 'zone')).toBe(true);
+  });
+
+  it('keeps the throw zone inside the room, even in an L-shape', () => {
+    const l = normalizeCompartment(setShape({ ...defaultCompartment(), boxW: ft(24), boxD: ft(24) }, 'cutout-b', 0.5, 0.45));
+    const back = framesFor(l).find((f) => f.letter === 'C')!;
+    // A unit on the back wall over the notch side, throwing toward the cut-out.
+    const c = { ...l, evaporators: [{ id: 'ev1', model: 'ICC-EVC1500', wall: back.edge, offset: ft(5), gap: inToMm(20) }] };
+    const t = buildCompartment(c, 'indoor');
+    const zone = t.parts.find((p): p is ZonePart => p.kind === 'zone')!;
+    const room = offsetPolygon(t.footprint, -c.wallThickness);
+    const inside = (poly: [number, number][], [x, y]: [number, number]) => {
+      let k = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        if (poly[i][1] > y !== poly[j][1] > y && x < ((poly[j][0] - poly[i][0]) * (y - poly[i][1])) / (poly[j][1] - poly[i][1]) + poly[i][0]) k = !k;
+      }
+      return k;
+    };
+    // Every zone corner is inside the room or on its edge.
+    const onEdge = ([x, y]: [number, number]) =>
+      room.some((a, i) => {
+        const b = room[(i + 1) % room.length];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy)));
+        return Math.hypot(a[0] + dx * t - x, a[1] + dy * t - y) < 1;
+      });
+    for (const p of zone.polygon) expect(inside(room as [number, number][], p as [number, number]) || onEdge(p as [number, number])).toBe(true);
+    // And it was actually trimmed: smaller than the untrimmed 15' wide rectangle.
+    const area = (poly: readonly (readonly [number, number])[]) => Math.abs(poly.reduce((s, p, i) => s + p[0] * poly[(i + 1) % poly.length][1] - poly[(i + 1) % poly.length][0] * p[1], 0)) / 2;
+    expect(area(zone.polygon)).toBeLessThan(ft(15) * ft(20));
+  });
+
+  it('sizes units from the artwork proportions', () => {
+    const one = EVAPORATORS.find((e) => e.sku === 'ICC-EVC1500')!;
+    const two = EVAPORATORS.find((e) => e.sku === 'ICC-EVC2000')!;
+    expect(two.length / one.length).toBeCloseTo(1020.22 / 633.69, 6);
+    expect(one.fanDiameter).toBeCloseTo(inToMm(14), 6);
   });
 
   it('warns when there is no evaporator', () => {

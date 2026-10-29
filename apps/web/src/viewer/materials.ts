@@ -38,6 +38,15 @@ export class Materials {
   coil = new THREE.MeshStandardMaterial({ color: 0x6b7177, roughness: 0.7, metalness: 0.4 });
   throwZone = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide });
   throwOver = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  /** Throw zone under the pointer: the same colour, a little stronger, still see-through. */
+  throwHover = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide });
+
+  /** Throw zone opacity (0-1); hover adds a little, capped so it stays see-through. */
+  setThrowOpacity(o: number) {
+    this.throwZone.opacity = o;
+    this.throwOver.opacity = Math.min(0.8, o + 0.02);
+    this.throwHover.opacity = Math.min(0.75, o + 0.18);
+  }
   /** Floor glow under the compartment being edited. */
   glow = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.55, depthWrite: false });
   glowSoft = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.16, depthWrite: false });
@@ -116,7 +125,7 @@ export class Materials {
 
   /** Materials shared across rebuilds; per-part colour clones are disposed with the model. */
   shared(): THREE.Material[] {
-    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag, this.glow, this.glowSoft, this.throwZone, this.throwOver];
+    return [...this.meshMaterials(), this.edge, this.dimLine, this.flag, this.glow, this.glowSoft, this.throwZone, this.throwOver, this.throwHover];
   }
 
   dispose() {
@@ -126,6 +135,7 @@ export class Materials {
     this.flag.dispose();
     this.throwZone.dispose();
     this.throwOver.dispose();
+    this.throwHover.dispose();
   }
 }
 

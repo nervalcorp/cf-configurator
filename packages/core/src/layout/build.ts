@@ -15,7 +15,7 @@
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
 import { CHECKER_PLATE, DOOR_CLOSER_SKU, DOOR_WINDOW, EVAP_RULES, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
-import { type Vec2, bounds, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
+import { type Vec2, bounds, clipPolygon, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
@@ -106,6 +106,15 @@ export interface CylinderPart extends Base {
   doorId?: string;
 }
 
+/** A flat zone just under the ceiling (an evaporator's air throw), already clipped to the room. */
+export interface ZonePart extends Base {
+  kind: 'zone';
+  polygon: Vec2[];
+  y: number;
+  /** Past the throw limit: drawn red. */
+  over: boolean;
+}
+
 /** A flat polygon extruded upward: floor slab or roof. */
 export interface SlabPart extends Base {
   kind: 'floor' | 'roof';
@@ -169,7 +178,7 @@ export interface WallPart extends Base {
   thickness: number;
 }
 
-export type Part = BoxPart | CylinderPart | SlabPart | WallPart | RampPart | ModelPart;
+export type Part = BoxPart | CylinderPart | SlabPart | WallPart | RampPart | ModelPart | ZonePart;
 
 export interface Dimension {
   a: Vec3;
@@ -945,47 +954,55 @@ function shelvingParts(c: Compartment, u: Compartment['accessories']['shelving']
 }
 
 /**
- * Evaporator, as a simple model until artwork arrives: stainless housing, one
- * round fan guard (with hub) per fan on the side facing the room, coil fins on
- * the back, drain pan underneath, and a flat "throw" zone on the ceiling showing
- * how far its air reaches (teal, or red past the 25' limit).
+ * Evaporator: the unit itself is built by the viewer from John's artwork (the
+ * housing, rails, brackets, drain rail, pipe stubs, fans and badge of the 1, 2
+ * or 3 fan model), placed at the housing's centre with local +z the way it
+ * blows. The air throw is a flat zone under the ceiling, as wide as one unit
+ * covers and as long as the air travels, clipped to the room's shape.
  */
 function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], b: { cx: number; cy: number }, fTop: number, wallH: number): Part[] {
   const p = evaporatorPlan(c, e);
   if (!p.frame) return [];
   const def = p.def;
   const into = p.into;
-  const along: Vec2 = [p.frame.u[0], p.frame.u[1]];
-  // Local frame: x along the wall, z toward the room (the way it blows), y up.
   const rot = Math.atan2(into[0], into[1]);
   const top = fTop + wallH - EVAP_RULES.ceilingGap;
-  const cy = top - def.height / 2;
-  const at = (lx: number, lz: number, y: number): Vec3 => [p.center[0] - b.cx + along[0] * lx * -1 + into[0] * lz, y, p.center[1] - b.cy + along[1] * lx * -1 + into[1] * lz];
   const id = (s: string) => `${c.id}:evap-${e.id}:${s}`;
   const label = `Evaporator ${e.id.replace('ev', 'E')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h`;
-  const D = def.depth;
-  const out: Part[] = [];
-  out.push({ kind: 'evap-housing', id: id('housing'), center: at(0, 0, cy), size: [def.length, def.height, D], rotationY: rot, label });
-  out.push({ kind: 'evap-coil', id: id('coil'), center: at(0, -D / 2 - 6, cy), size: [def.length - 40, def.height - 30, 12], rotationY: rot, label });
-  out.push({ kind: 'evap-pan', id: id('pan'), center: at(0, 0, top - def.height - 12), size: [def.length + 20, 24, D + 20], rotationY: rot, label });
-  const pitch = def.length / def.fans;
-  for (let i = 0; i < def.fans; i++) {
-    const lx = -def.length / 2 + pitch * (i + 0.5);
-    out.push({ kind: 'fan', id: id(`fan-${i + 1}`), center: at(lx, D / 2 + 8, cy), radius: def.fanDiameter / 2, height: 16, axis: 'z', rotationY: rot, label });
-    out.push({ kind: 'fan', id: id(`hub-${i + 1}`), center: at(lx, D / 2 + 20, cy), radius: def.fanDiameter * 0.14, height: 30, axis: 'z', rotationY: rot, label });
-  }
-  // Throw zone just under the ceiling: as wide as one unit covers, as long as the air travels.
+  const out: Part[] = [
+    {
+      kind: 'model',
+      id: id('model'),
+      model: 'EVAPORATOR',
+      center: [p.center[0] - b.cx, top - def.height / 2, p.center[1] - b.cy],
+      rotationY: rot,
+      params: { fans: def.fans, fanDiameter: def.fanDiameter, depth: def.depth },
+      label,
+    },
+  ];
+  // Throw zone: a rectangle out from the unit's front, clipped to the inside of the room.
   const t = evaporatorThrow(c, e);
   const reach = Math.min(t, EVAP_RULES.throwMax);
-  const over = t > EVAP_RULES.throwMax;
-  out.push({
-    kind: 'evap-throw',
-    id: id('throw'),
-    center: at(0, D / 2 + reach / 2, top - 4),
-    size: [Math.min(EVAP_RULES.coverWidth, def.length * 2.2), 2, reach],
-    rotationY: rot,
-    color: over ? '#e11d48' : '#14b8c8',
-    label: `${label} · throws ${Math.round(t / 304.8)}'`,
-  });
+  const half = EVAP_RULES.coverWidth / 2;
+  const side: Vec2 = [p.frame.u[0], p.frame.u[1]];
+  const f = p.front;
+  const rect: Vec2[] = [
+    [f[0] - side[0] * half, f[1] - side[1] * half],
+    [f[0] + side[0] * half, f[1] + side[1] * half],
+    [f[0] + side[0] * half + into[0] * reach, f[1] + side[1] * half + into[1] * reach],
+    [f[0] - side[0] * half + into[0] * reach, f[1] - side[1] * half + into[1] * reach],
+  ];
+  const inner = offsetPolygon(footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD), -c.wallThickness);
+  const zone = clipPolygon(inner, rect);
+  if (zone.length >= 3) {
+    out.push({
+      kind: 'zone',
+      id: id('throw'),
+      polygon: zone.map(([x, y]) => [x - b.cx, y - b.cy] as Vec2),
+      y: top - 4,
+      over: t > EVAP_RULES.throwMax,
+      label: `${label} · throws ${Math.round(t / 304.8)}'`,
+    });
+  }
   return out;
 }

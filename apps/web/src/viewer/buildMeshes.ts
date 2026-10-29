@@ -37,8 +37,12 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
       // Mirrored for right-hand hardware; three.js flips face winding for negative scale.
       if (part.mirror) obj.scale.x = -1;
       const problems = flags.get(part.id);
+      // Collect first: adding overlays while traversing would visit them too, without end.
+      const meshes: THREE.Mesh[] = [];
       obj.traverse((o) => {
-        if (!(o instanceof THREE.Mesh)) return;
+        if (o instanceof THREE.Mesh && !o.userData.overlay) meshes.push(o);
+      });
+      meshes.forEach((o) => {
         o.userData.label = part.label;
         o.userData.partId = part.id;
         o.userData.problems = problems;
@@ -55,7 +59,7 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
     }
     const mesh = partMesh(part, mats, skin);
     if (!mesh) continue;
-    mesh.castShadow = part.kind !== 'roof' && part.kind !== 'evap-throw';
+    mesh.castShadow = part.kind !== 'roof' && part.kind !== 'zone';
     mesh.receiveShadow = true;
     const problems = flags.get(part.id);
     mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined, problems };
@@ -81,6 +85,7 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
 }
 
 const OUTLINED = new Set<Part['kind']>(['post', 'wall', 'door-leaf', 'door-frame', 'floor', 'roof', 'track', 'housing', 'curtain', 'guide', 'glass', 'plate']);
+// Note: 'zone' is not outlined; it is a soft flat area.
 
 function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
   switch (part.kind) {
@@ -147,10 +152,18 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
       return boxMesh(part, mats.evapHousing);
     case 'evap-coil':
       return boxMesh(part, mats.coil);
-    case 'evap-throw': {
-      const m = boxMesh(part, part.color === '#e11d48' ? mats.throwOver : mats.throwZone);
+    case 'evap-throw':
+      return null;
+    case 'zone': {
+      // Throw zone, already clipped to the room's shape by the core.
+      const shape = new THREE.Shape(part.polygon.map(([x, z]) => new THREE.Vector2(x, -z)));
+      const g = new THREE.ShapeGeometry(shape);
+      g.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(g, part.over ? mats.throwOver : mats.throwZone);
+      m.position.y = part.y;
+      m.renderOrder = 1;
       m.userData.throw = true;
-      m.castShadow = false;
+      m.userData.over = part.over;
       return m;
     }
     case 'plate':

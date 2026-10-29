@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { type ComponentTree, type Compartment, type ExteriorFinish, offsetPolygon } from '@wic/core';
+import { EVAP_RULES, type ComponentTree, type Compartment, type ExteriorFinish, bounds, evaporatorPlan, footprint, offsetPolygon } from '@wic/core';
+import { type AirRoom, Airflow } from './airflow';
 import { activeBrand } from '../theme/brands';
 import { Materials, Skin } from './materials';
 import { withDpi } from './png';
@@ -29,6 +30,8 @@ export class SceneController {
   private mats = new Materials();
   private model = new THREE.Group();
   private envMap: THREE.Texture;
+  private airflow = new Airflow();
+  private clock = new THREE.Clock();
   /** One built group per compartment, keyed by compartment id. */
   private built = new Map<string, Built & { group: THREE.Group }>();
   private skins = new Map<string, Skin>();
@@ -98,6 +101,8 @@ export class SceneController {
     this.scene.add(grid);
 
     this.model.scale.setScalar(MM);
+    this.airflow.points.visible = false;
+    this.scene.add(this.airflow.points);
     this.mats.checker.map = checkerTexture();
     this.mats.wireShelf.map = wireShelfTexture();
     this.paintScreens(null);
@@ -173,6 +178,16 @@ export class SceneController {
     this.mats.setWireframe(this.wireframe);
     for (const sk of this.skins.values()) for (const m of sk.materials()) (m as THREE.MeshStandardMaterial).wireframe = this.wireframe;
     this.placeKeyLight();
+    this.airflow.setRooms(entries.map(({ tree, comp }) => airRoom(tree, comp)));
+  }
+
+  /** Airflow particles on or off (Refrigeration step, unless the user prefers less motion). */
+  setAirflow(on: boolean) {
+    this.airflow.points.visible = on;
+  }
+
+  setThrowOpacity(o: number) {
+    this.mats.setThrowOpacity(o);
   }
 
   /**
@@ -363,6 +378,7 @@ export class SceneController {
     this.mats.screenTC.map?.dispose();
     this.mats.dispose();
     this.envMap.dispose();
+    this.airflow.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -404,7 +420,8 @@ export class SceneController {
       if (mesh) {
         this.hovered = mesh;
         this.hoveredMat = mesh.material;
-        mesh.material = this.mats.highlight;
+        // Throw zones stay see-through on hover: a slightly stronger tint, not a solid highlight.
+        mesh.material = mesh.userData.throw && !mesh.userData.over ? this.mats.throwHover : mesh.userData.throw ? mesh.material : this.mats.highlight;
       }
     }
     this.onHover(
@@ -431,6 +448,7 @@ export class SceneController {
       this.lightAngle += 0.01;
       this.placeKeyLight();
     }
+    this.airflow.update(this.clock.getDelta());
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this.drawAxes();
@@ -473,4 +491,29 @@ export class SceneController {
     }
     ctx.globalAlpha = 1;
   }
+}
+
+/** What the airflow particles need from one compartment, in compartment-centred plan mm. */
+function airRoom(tree: ComponentTree, comp: Compartment): AirRoom {
+  const fp = footprint(comp.shape, comp.boxW, comp.boxD, comp.notchW, comp.notchD);
+  const b = bounds(fp);
+  const inner = offsetPolygon(fp, -comp.wallThickness).map(([x, y]) => [x - b.cx, y - b.cy] as [number, number]);
+  const top = tree.floorTop + comp.height - EVAP_RULES.ceilingGap;
+  return {
+    offset: [comp.position.x, comp.position.z],
+    inner,
+    units: comp.evaporators.map((e) => {
+      const p = evaporatorPlan(comp, e);
+      return {
+        front: [p.front[0] - b.cx, p.front[1] - b.cy] as [number, number],
+        into: [p.into[0], p.into[1]] as [number, number],
+        along: [p.frame.u[0], p.frame.u[1]] as [number, number],
+        length: p.def.length,
+        fanY: top - p.def.height / 2,
+        floorY: tree.floorTop,
+        depth: p.def.depth,
+        gap: e.gap,
+      };
+    }),
+  };
 }

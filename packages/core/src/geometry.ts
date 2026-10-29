@@ -123,3 +123,38 @@ export function isInsideCorner(poly: Polygon, i: number): boolean {
   const cross = (p[0] - prev[0]) * (next[1] - p[1]) - (p[1] - prev[1]) * (next[0] - p[0]);
   return isClockwise(poly) ? cross > 0 : cross < 0;
 }
+
+/**
+ * Clip a polygon (may be concave) by a convex polygon (Sutherland-Hodgman).
+ * Used to trim an evaporator's throw zone to the room's shape.
+ */
+export function clipPolygon(subject: Polygon, clip: Polygon): Vec2[] {
+  // Signed area (shoelace): its sign says which side of each clip edge is inside.
+  let a2 = 0;
+  for (let i = 0; i < clip.length; i++) {
+    const p = clip[i];
+    const q = clip[(i + 1) % clip.length];
+    a2 += p[0] * q[1] - q[0] * p[1];
+  }
+  const sgn = Math.sign(a2) || 1;
+  let out: Vec2[] = [...subject];
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const side = (p: Vec2) => sgn * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]));
+    const input = out;
+    out = [];
+    for (let j = 0; j < input.length; j++) {
+      const p = input[j];
+      const q = input[(j + 1) % input.length];
+      const sp = side(p);
+      const sq = side(q);
+      if (sp >= 0) out.push(p);
+      if ((sp >= 0) !== (sq >= 0)) {
+        const t = sp / (sp - sq);
+        out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+      }
+    }
+  }
+  return out;
+}

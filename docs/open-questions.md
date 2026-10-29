@@ -10,11 +10,10 @@
 
 ## Evaporators
 
-- **Unit sizes.** No dimensions on the pages; estimated from fan count and fan size (1-fan cooler about 28" × 18" × 16"). Send length × height × depth (and weight) per model; the rear gap rule and headroom depend on the coil height.
+- **Unit sizes.** Proportions now come from the evaporator artwork, scaled by an estimated fan size (1-fan cooler about 28" × 17" × 16"; 3-fan freezer about 79" × 22½" × 20"). Send length × height × depth (and weight) per model; the rear gap rule and headroom depend on the height.
 - **Values to check on the ICC pages:** EVC1000 lists the same 1 fan and 1523 CFM as EVC500 at nearly twice the capacity; EVC2000-4000 share one airflow; EVF3000 lists TES2-5 below EVF2000's TES2-6; heater counts are blank on EVF2000-4000.
 - **Load and model choice.** The customer picks models. A heat-load estimate (to suggest a model and check total BTU/h) is not built; it needs engineering sign-off first.
 - **Condensing units** come next; pairing them waits on the capacity tables being confirmed.
-- **Artwork.** Send an evaporator SVG when ready and the box model can be rebuilt from it like the hinge.
 
 ## Products from artwork
 

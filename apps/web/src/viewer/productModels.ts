@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
 import tsc2000Svg from '../assets/products/tsc2000.svg?raw';
 import { type Built, buildCloser, buildHinge } from './hardwareModels';
+import { buildEvaporator } from './evaporatorModel';
 
 type Role = 'housing' | 'boot' | 'cable' | 'gland';
 
@@ -222,6 +223,7 @@ function buildTemplate(id: string): Template | null {
 const HARDWARE: Record<string, (p: Record<string, number>) => Built> = {
   'HINGE-1238': (p) => buildHinge(p.standoff ?? 0),
   'CLOSER-20SS': (p) => buildCloser(p.standoff ?? 0),
+  EVAPORATOR: (p) => buildEvaporator(p.fans ?? 1, p.fanDiameter ?? 355.6, p.depth ?? 406.4),
 };
 const hardware = new Map<string, Built>();
 

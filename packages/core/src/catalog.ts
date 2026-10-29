@@ -367,10 +367,18 @@ export const SHELVING = {
  * 1523 CFM as EVC500; EVC2000-4000 share one airflow; EVF3000 lists TES2-5 below
  * EVF2000's TES2-6; heater counts are blank on EVF2000-4000.
  *
- * Sizes are ESTIMATES from fan count and fan size until the spec sheets arrive:
- * fan diameter from airflow (1523 CFM ≈ 12", 2302 ≈ 14", 4073 ≈ 18"); length =
- * fans × (fan + 6") + 10"; height = fan + 6"; depth 16" (18" fans: 20").
+ * Sizes are ESTIMATES until the spec sheets arrive. Proportions come from
+ * John's evaporator artwork (1, 2 and 3 fan fronts, in SVG units: body 633.69,
+ * 1020.22 or 1381.73 wide × 367.54 high, drain rail 23.95, fan circle r 156.82),
+ * scaled so the fan circle matches a fan size estimated from airflow
+ * (1523 CFM ≈ 12", 2302 ≈ 14", 4073 ≈ 18"). Depth 16" (18" fans: 20").
  */
+export const EVAP_ART = {
+  bodyWidth: { 1: 633.69, 2: 1020.22, 3: 1381.73 } as Record<number, number>,
+  bodyHeight: 367.54,
+  rail: 23.95,
+  fanRadius: 156.82,
+};
 export type EvapLine = 'cooler' | 'freezer';
 
 export interface EvaporatorDef {
@@ -393,6 +401,8 @@ export interface EvaporatorDef {
 
 function evap(sku: string, line: EvapLine, btu: number, fans: number, cfmPerFan: number, volts: string, minCircuit: number, txv: string, heaters?: string): EvaporatorDef {
   const fan = cfmPerFan >= 4000 ? 18 : cfmPerFan >= 2000 ? 14 : 12;
+  // mm per artwork unit: the artwork's fan circle at the estimated fan size
+  const k = inToMm(fan) / (2 * EVAP_ART.fanRadius);
   return {
     sku,
     line,
@@ -403,8 +413,8 @@ function evap(sku: string, line: EvapLine, btu: number, fans: number, cfmPerFan:
     minCircuit,
     txv,
     heaters,
-    length: inToMm(fans * (fan + 6) + 10),
-    height: inToMm(fan + 6),
+    length: EVAP_ART.bodyWidth[fans] * k,
+    height: (EVAP_ART.bodyHeight + EVAP_ART.rail) * k,
     depth: inToMm(fan >= 18 ? 20 : 16),
     fanDiameter: inToMm(fan),
     sizeEstimated: true,

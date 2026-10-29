@@ -46,6 +46,10 @@ interface UI {
   selectedShelf: string | null;
   /** Evaporator being edited on the Refrigeration tab. */
   selectedEvap: string | null;
+  /** Airflow particles on the Refrigeration step. */
+  airflow: boolean;
+  /** Throw zone opacity, 0-1. */
+  throwOpacity: number;
 }
 
 interface State {
@@ -98,6 +102,9 @@ export const useStore = create<State>((set, get) => {
       selectedDoor: initial.compartments[0].doors[0]?.id ?? null,
       selectedShelf: null,
       selectedEvap: null,
+      // Off for people who ask their system for less motion.
+      airflow: typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+      throwOpacity: 0.2,
     },
 
     editCompartment: (fn, opts) => {

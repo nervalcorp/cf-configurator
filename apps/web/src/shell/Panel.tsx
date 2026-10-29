@@ -1,6 +1,6 @@
 import type { TabId } from '@wic/core';
 import { TABS, useStore } from '../store';
-import { Switch } from './controls';
+import { Slider, Switch } from './controls';
 import { LayoutTab } from '../tabs/LayoutTab';
 import { FinishesTab } from '../tabs/FinishesTab';
 import { DoorsTab } from '../tabs/DoorsTab';
@@ -47,6 +47,23 @@ export function Panel() {
           <h3 className="section-label">Display options</h3>
           <Switch label="Show dimensions" checked={ui.showDims} onChange={(v) => setUi({ showDims: v })} />
           <Switch label="Wireframe" checked={ui.wireframe} onChange={(v) => setUi({ wireframe: v })} />
+          {ui.tab === 'refrigeration' && (
+            <>
+              <Switch label="Show airflow" checked={ui.airflow} onChange={(v) => setUi({ airflow: v })} />
+              <Slider
+                label="Air throw opacity"
+                value={Math.round(ui.throwOpacity * 100)}
+                min={0}
+                max={60}
+                step={5}
+                display={`${Math.round(ui.throwOpacity * 100)}%`}
+                minLabel="0%"
+                maxLabel="60%"
+                onInput={(v) => setUi({ throwOpacity: v / 100 })}
+                onCommit={() => undefined}
+              />
+            </>
+          )}
         </section>
         <div className="continue-row">
           {prev && (

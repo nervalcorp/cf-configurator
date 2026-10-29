@@ -106,6 +106,8 @@ Aluminum checker plate is placed by the square foot: 1' × 1' squares on a 1-ft 
 
 ## Products built from artwork
 
+Artwork SVGs are bundled into the app, so keep their embedded photos small: the evaporator photos are re-encoded as 1200 px JPEGs (the SVG went from 6.7 MB to 0.23 MB with no visible loss on the fans). The `<image>` width and height attributes must stay as drawn, since the outlines and texture mapping use them.
+
 Some products are modelled from artwork John supplies: one SVG with the product photo as an `<image>` and a vector shape over each part, in the same coordinates. `apps/web/src/viewer/productModels.ts` reads it with three.js's SVGLoader, turns each shape into 3D by its role (extruded housing, raised glass face, tapered boot, cable, hex gland…) and projects the photo onto every part from the SVG's x/y, so the model's face is the photo. Shapes are matched by `id` when they have one (`id="housing"`), otherwise by order. Add a product by dropping its SVG in `apps/web/src/assets/products/` and adding a recipe (roles, real width, depths). Built so far:
 
 - **ICC-TSC2000 Smart Control**: housing, raised glass face, boot, cable, gland.
@@ -120,7 +122,11 @@ On the Refrigeration step (above the controller). Eleven ICC models: coolers ICC
 
 Rules encoded (`layout/evaporators.ts`, `EVAP_RULES`): never over a door (no unit on a door's wall within 12" of the opening); rear gap at least the coil height and never under 12"; one unit throws up to 25' (20' comfortable) and covers about 15' of width; keep shelving 12" clear of the unit; flag two units blowing at each other in a short room; flag headroom under 6' 6". Errors tint the unit red with the reason on hover; warnings show on Review.
 
-**Add evaporator** puts one unit in the best open spot: the ceiling spot whose air reaches the most floor not yet reached, preferring the wall facing the main door so it blows toward it. **Suggest layout** builds the full set: it adds units that way until about all of the floor is within 20' of one (never suggesting a spot that throws past 25'), spaces units sharing a wall into equal sections, then drops any unit the others already cover. This gives one unit for small rooms, two for rooms 20'-40' long or more than 15' wide, and a unit for the leg of an L-shaped room. Units can be dragged along the ceiling on the plan or onto another wall; throw zones show on the ceiling while on the Refrigeration step. Unit sizes are estimated from fan count until the spec sheets arrive.
+**Add evaporator** puts one unit in the best open spot: the ceiling spot whose air reaches the most floor not yet reached, preferring the wall facing the main door so it blows toward it. **Suggest layout** builds the full set: it adds units that way until about all of the floor is within 20' of one (never suggesting a spot that throws past 25'), spaces units sharing a wall into equal sections, then drops any unit the others already cover. This gives one unit for small rooms, two for rooms 20'-40' long or more than 15' wide, and a unit for the leg of an L-shaped room. Units can be dragged along the ceiling on the plan or onto another wall.
+
+The units are modelled from John's evaporator artwork (`apps/web/src/viewer/evaporatorModel.ts`): the 1, 2 and 3 fan outlines give the housing, top lip, drain rail, side rails, hanger brackets with studs, and the black pipe stubs and flanges; the frame is brushed aluminium, and only the fans and the ICC badge take the photos as textures (each outline set sits directly below its photo, shifted 527.8 units). Sizes keep the artwork's proportions, scaled so the fan matches a fan size estimated from airflow, until the spec sheets arrive.
+
+On the Refrigeration step each unit shows its air throw as a flat zone under the ceiling, clipped to the room's shape so it never passes through a wall or into a cut-out; hovering it strengthens the tint but keeps it see-through, and Display options has an opacity slider. **Show airflow** adds a light particle loop: cold air jets out of the fans along the ceiling, slows and sinks, runs back along the floor and rises behind the unit into the coil; walls keep particles inside the room. It is one point cloud (up to 320 particles) stepped on the CPU each frame, and it starts off for people who ask their system for reduced motion.
 
 ## Controller
 
