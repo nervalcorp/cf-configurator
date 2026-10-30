@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -100,6 +100,22 @@ export interface Evaporator {
   gap: number;
 }
 
+/**
+ * A condensing unit for split evaporators. Indoor units sit on the walk-in roof;
+ * outdoor units stand outside on a pad. Position is the unit's centre in
+ * floor-plan mm (may be outside the footprint for outdoor units); `rotation`
+ * turns it (degrees, 0 = facing the front, +y).
+ */
+export interface CondensingUnit {
+  id: string;
+  model: string;
+  /** Ids of the split evaporators it serves. */
+  serves: string[];
+  x: number;
+  y: number;
+  rotation: number;
+}
+
 export interface ControlParams {
   model: ControlModel;
   wall: number;
@@ -141,8 +157,10 @@ export interface Compartment {
     checker: CheckerSquare[];
     shelving: ShelvingUnit[];
   };
-  /** Refrigeration tab: evaporators at the ceiling. */
+  /** Refrigeration tab: evaporators at the ceiling (split and packaged). */
   evaporators: Evaporator[];
+  /** Refrigeration tab: condensing units for the split evaporators. */
+  condensers: CondensingUnit[];
   /** Refrigeration tab: the walk-in controller. */
   control: ControlParams;
 }
@@ -208,6 +226,7 @@ export function defaultCompartment(id = 'c1', name = 'Compartment 1'): Compartme
     },
     accessories: { ramp: 'exterior', checker: [], shelving: [] },
     evaporators: [],
+    condensers: [],
     // Beside door d1 (latch side, hinged right) at eye level.
     control: { model: 'TSC2000', wall: 2, offset: inToMm(8), height: inToMm(60) },
   };
@@ -255,11 +274,12 @@ export function defaultConfiguration(): Configuration {
  * v6 → v7: the door closer (ICC-20SS) is a fitted part, on by default; older
  * swing doors had it drawn as standard, so they get it switched on.
  * v7 → v8: evaporators.
+ * v8 → v9: condensing units; packaged units join the evaporator list.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, 3, 4, 5, 6, 7, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -297,6 +317,7 @@ export function migrate(input: unknown): Configuration {
           shelving: c.accessories?.shelving ?? [],
         },
         evaporators: c.evaporators ?? [],
+        condensers: c.condensers ?? [],
         // wall -1 asks normalize() to place it beside the first door.
         control: c.control ?? { ...base.control, wall: -1 },
       };

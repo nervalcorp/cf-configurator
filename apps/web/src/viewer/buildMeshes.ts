@@ -4,6 +4,7 @@
  * All geometry is in mm; the caller scales the root group to metres.
  */
 import * as THREE from 'three';
+import { offsetPolygon, type Vec2 } from '@wic/core';
 import type { BoxPart, ComponentTree, Dimension, Face, Part, RampPart, SlabPart, WallPart } from '@wic/core';
 import type { Materials, Skin } from './materials';
 import { productModel } from './productModels';
@@ -62,7 +63,8 @@ export function buildMeshes(tree: ComponentTree, mats: Materials, skin: Skin, fl
     mesh.castShadow = part.kind !== 'roof' && part.kind !== 'zone';
     mesh.receiveShadow = true;
     const problems = flags.get(part.id);
-    mesh.userData = { partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined, problems };
+    // Merge: some meshes (throw zones) carry their own markers.
+    mesh.userData = { ...mesh.userData, partId: part.id, label: part.label, doorId: 'doorId' in part ? part.doorId : undefined, problems };
     root.add(mesh);
     if (problems) {
       const overlay = new THREE.Mesh(mesh.geometry, mats.flag);
@@ -105,6 +107,15 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
       const slots: THREE.Material[] = Array(6).fill(mats.badgeBody);
       slots[4] = mats.badgeFace;
       return boxMesh(part, slots);
+    }
+    case 'unit': {
+      // Condensing and packaged units (simple boxes for now); badges carry the ICC logo on their front.
+      if (part.logo) {
+        const slots: THREE.Material[] = Array(6).fill(mats.badgeBody);
+        slots[4] = mats.badgeFace;
+        return boxMesh(part, slots);
+      }
+      return boxMesh(part, tinted(mats.evapHousing, part.color ?? '#dfe2e4'));
     }
     case 'gasket':
       return boxMesh(part, mats.threshold);
@@ -155,10 +166,8 @@ function partMesh(part: Part, mats: Materials, skin: Skin): THREE.Mesh | null {
     case 'evap-throw':
       return null;
     case 'zone': {
-      // Throw zone, already clipped to the room's shape by the core.
-      const shape = new THREE.Shape(part.polygon.map(([x, z]) => new THREE.Vector2(x, -z)));
-      const g = new THREE.ShapeGeometry(shape);
-      g.rotateX(-Math.PI / 2);
+      // Throw zone, already clipped to the room's shape by the core, with a soft edge.
+      const g = featheredZone(part.polygon, ZONE_FEATHER);
       const m = new THREE.Mesh(g, part.over ? mats.throwOver : mats.throwZone);
       m.position.y = part.y;
       m.renderOrder = 1;
@@ -396,4 +405,51 @@ export function disposeTree(obj: THREE.Object3D, keep: Set<THREE.Material>) {
       mat.dispose();
     }
   });
+}
+
+/** Width of the soft edge on throw zones (mm); reads like a ~15px blur at normal viewing distance. */
+const ZONE_FEATHER = 220;
+
+/**
+ * A flat zone whose edge fades out: a solid inner area plus a band that runs
+ * from full strength at the inset outline to clear at the real outline, using
+ * per-vertex alpha. No blur pass needed. Lies flat (y = 0), plan y → world z.
+ */
+function featheredZone(poly: readonly Vec2[], feather: number): THREE.BufferGeometry {
+  const outer = poly;
+  // Inset outline, same vertex order (zones are right-angled, so a straight inset works).
+  const span = Math.min(
+    Math.max(...poly.map((p) => p[0])) - Math.min(...poly.map((p) => p[0])),
+    Math.max(...poly.map((p) => p[1])) - Math.min(...poly.map((p) => p[1])),
+  );
+  const f = Math.min(feather, span * 0.35);
+  const inner = offsetPolygon(outer, -f);
+  const pos: number[] = [];
+  const col: number[] = [];
+  const push = (p: Vec2, a: number) => {
+    pos.push(p[0], 0, p[1]);
+    col.push(1, 1, 1, a);
+  };
+  // Inner fill (triangulated by three's earcut)
+  const contour = inner.map(([x, y]) => new THREE.Vector2(x, y));
+  const tris = THREE.ShapeUtils.triangulateShape(contour, []);
+  for (const [a, b, c] of tris) {
+    push(inner[a], 1);
+    push(inner[b], 1);
+    push(inner[c], 1);
+  }
+  // Fading band between inner and outer
+  for (let i = 0; i < outer.length; i++) {
+    const j = (i + 1) % outer.length;
+    push(inner[i], 1);
+    push(outer[i], 0);
+    push(outer[j], 0);
+    push(inner[i], 1);
+    push(outer[j], 0);
+    push(inner[j], 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  return g;
 }

@@ -13,3 +13,4 @@ export * from './layout/fixtures';
 export * from './compartments';
 export * from './layout/shelving';
 export * from './layout/evaporators';
+export * from './layout/condensers';

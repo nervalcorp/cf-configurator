@@ -59,9 +59,12 @@ export function Viewer() {
   const tab = useStore((s) => s.ui.tab);
   const airflow = useStore((s) => s.ui.airflow);
   const throwOpacity = useStore((s) => s.ui.throwOpacity);
-  useEffect(() => ctrl.current?.setShowThrow(tab === 'refrigeration'), [tab, entries]);
-  useEffect(() => ctrl.current?.setAirflow(tab === 'refrigeration' && airflow), [tab, airflow]);
-  useEffect(() => ctrl.current?.setThrowOpacity(throwOpacity), [throwOpacity]);
+  const throwHover = useStore((s) => s.ui.throwHoverOpacity);
+  const showThrow = useStore((s) => s.ui.showThrow);
+  useEffect(() => ctrl.current?.setShowThrow(tab === 'refrigeration' && showThrow), [tab, showThrow, entries]);
+  // Airflow shows on every step once it's on.
+  useEffect(() => ctrl.current?.setAirflow(airflow), [airflow]);
+  useEffect(() => ctrl.current?.setThrowOpacity(throwOpacity, throwHover), [throwOpacity, throwHover]);
   useEffect(() => ctrl.current?.setWireframe(wireframe), [wireframe]);
   useEffect(() => ctrl.current?.setAutoRotate(autoRotate), [autoRotate]);
   useEffect(() => ctrl.current?.setLightOrbit(lightOrbit), [lightOrbit]);

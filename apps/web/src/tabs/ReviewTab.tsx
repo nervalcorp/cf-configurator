@@ -15,6 +15,8 @@ import {
   formatInches,
   getControl,
   getEvaporator,
+  getCondenser,
+  CONTROL_LIMITS,
   validate,
 } from '@wic/core';
 import { openConfiguration, saveConfiguration } from '../files';
@@ -51,7 +53,13 @@ function partsOf(c: Compartment, tree: ComponentTree, into: Map<string, Row>) {
   });
   const ramps = tree.parts.filter((p) => p.kind === 'ramp').length;
   if (ramps) add(RAMP.sku, RAMP.label, ramps);
-  c.evaporators.forEach((e) => add(getEvaporator(e.model).sku, 'Evaporator'));
+  c.evaporators.forEach((e) => {
+    const d = getEvaporator(e.model);
+    add(d.sku, d.kind === 'packaged' ? 'Packaged unit (self-contained)' : 'Evaporator');
+  });
+  c.condensers.forEach((u) => add(getCondenser(u.model).sku, `Condensing unit, ${getCondenser(u.model).type}`));
+  const hp = c.condensers.reduce((n, u) => n + getCondenser(u.model).hp, 0) + c.evaporators.reduce((n, e) => n + (getEvaporator(e.model).hp ?? 0), 0);
+  if (c.control.model === 'TSC2000' && hp > CONTROL_LIMITS.volts220Hp) add('—', CONTROL_LIMITS.controlBox);
   const ctl = getControl(c.control.model);
   if (ctl) add(ctl.sku, ctl.label);
   if (c.accessories.checker.length) add('—', `${CHECKER_PLATE.label} (sq ft)`, c.accessories.checker.length);
@@ -182,6 +190,7 @@ function CompartmentSummary({ c, tree, site }: { c: Compartment; tree: Component
     ['Doors', `${c.doors.filter((d) => d.family !== 'glass').length || 'None'}`],
     ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
     ['Ramps', ramps ? `${ramps}` : 'None'],
+    ['Condensing units', c.condensers.length ? c.condensers.map((u) => getCondenser(u.model).sku).join(', ') : 'None'],
     ['Evaporators', c.evaporators.length ? `${c.evaporators.length}, ${c.evaporators.reduce((n, e) => n + getEvaporator(e.model).btu, 0).toLocaleString('en-US')} BTU/h total` : 'None'],
     ['Controller', ctl ? `${ctl.label} ${ctl.sku}` : 'None'],
     ['Shelving', c.accessories.shelving.length ? `${c.accessories.shelving.reduce((n, u) => n + u.bays, 0)} bays` : 'None'],

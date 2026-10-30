@@ -36,16 +36,17 @@ export class Materials {
   evapHousing = new THREE.MeshStandardMaterial({ color: 0xdfe3e6, roughness: 0.35, metalness: 0.5 });
   fanGuard = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.55, metalness: 0.2 });
   coil = new THREE.MeshStandardMaterial({ color: 0x6b7177, roughness: 0.7, metalness: 0.4 });
-  throwZone = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide });
-  throwOver = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  // Throw zones use per-vertex alpha for their soft edge (vertexColors with an alpha channel).
+  throwZone = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide, vertexColors: true });
+  throwOver = new THREE.MeshBasicMaterial({ color: 0xe11d48, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, vertexColors: true });
   /** Throw zone under the pointer: the same colour, a little stronger, still see-through. */
-  throwHover = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide });
+  throwHover = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide, vertexColors: true });
 
-  /** Throw zone opacity (0-1); hover adds a little, capped so it stays see-through. */
-  setThrowOpacity(o: number) {
+  /** Throw zone opacity, and its opacity under the pointer (0-1). */
+  setThrowOpacity(o: number, hover: number) {
     this.throwZone.opacity = o;
     this.throwOver.opacity = Math.min(0.8, o + 0.02);
-    this.throwHover.opacity = Math.min(0.75, o + 0.18);
+    this.throwHover.opacity = hover;
   }
   /** Floor glow under the compartment being edited. */
   glow = new THREE.MeshBasicMaterial({ color: 0x14b8c8, transparent: true, opacity: 0.55, depthWrite: false });

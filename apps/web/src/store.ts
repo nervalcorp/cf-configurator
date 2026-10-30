@@ -48,8 +48,12 @@ interface UI {
   selectedEvap: string | null;
   /** Airflow particles on the Refrigeration step. */
   airflow: boolean;
-  /** Throw zone opacity, 0-1. */
+  /** Throw zones on the Refrigeration step, their opacity and their opacity under the pointer (0-1). */
+  showThrow: boolean;
   throwOpacity: number;
+  throwHoverOpacity: number;
+  /** Condensing unit being edited on the Refrigeration tab. */
+  selectedCu: string | null;
 }
 
 interface State {
@@ -104,7 +108,10 @@ export const useStore = create<State>((set, get) => {
       selectedEvap: null,
       // Off for people who ask their system for less motion.
       airflow: typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+      showThrow: true,
       throwOpacity: 0.2,
+      throwHoverOpacity: 0.4,
+      selectedCu: null,
     },
 
     editCompartment: (fn, opts) => {
@@ -162,7 +169,7 @@ export const useStore = create<State>((set, get) => {
     setActive: (id) => {
       const c = get().config.compartments.find((x) => x.id === id);
       if (!c) return;
-      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null, selectedShelf: c.accessories.shelving[0]?.id ?? null, selectedEvap: c.evaporators[0]?.id ?? null } }));
+      set((s) => ({ ui: { ...s.ui, active: id, selectedDoor: c.doors[0]?.id ?? null, selectedShelf: c.accessories.shelving[0]?.id ?? null, selectedEvap: c.evaporators[0]?.id ?? null, selectedCu: c.condensers[0]?.id ?? null } }));
     },
 
     addCompartment: () => {

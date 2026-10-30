@@ -6,10 +6,11 @@
  */
 import type { Compartment, Configuration, Door } from './config';
 import { FINISH_COLORS, LIMITS } from './config';
-import { CONTROL_HEIGHT, EVAPORATORS, GLASS_MAX_ELEVATION, SHELVING, getEvaporator, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
+import { CEILING_UNITS, CONDENSERS, CONTROL_HEIGHT, CONTROL_LIMITS, GLASS_MAX_ELEVATION, SHELVING, getCondenser, getEvaporator, doorSize, doorSku, doorTag, getControl, getDoorFamily, getGlassSeries } from './catalog';
 import { controlBlocked, defaultControlPlacement, squareBlocker } from './layout/fixtures';
 import { shelvingBlocker } from './layout/shelving';
 import { checkEvaporator } from './layout/evaporators';
+import { checkCondenser, splitEvaporators } from './layout/condensers';
 import { overlappingCompartments } from './compartments';
 import { getShape, footprint } from './layout/shapes';
 import { findFrontEdge, wallFrames } from './layout/walls';
@@ -111,11 +112,26 @@ export function normalizeCompartment(c: Compartment): Compartment {
   const evaporators = base.evaporators.map((e) => {
     const def = getEvaporator(e.model);
     if (def.line === line && def.sku === e.model) return e;
-    const options = EVAPORATORS.filter((x) => x.line === line);
+    const options = CEILING_UNITS.filter((x) => x.line === line && x.kind === def.kind);
     const nearest = options.reduce((a, b) => (Math.abs(b.btu - def.btu) < Math.abs(a.btu - def.btu) ? b : a));
     return { ...e, model: nearest.sku };
   });
-  const withShelves = { ...withDoors, evaporators, accessories: { ...withDoors.accessories, shelving } };
+  // Condensing units: same swap on a temperature change; drop evaporators that are
+  // gone or packaged, and let each evaporator belong to one unit only (first wins).
+  const splitIds = new Set(evaporators.filter((e) => getEvaporator(e.model).kind === 'split').map((e) => e.id));
+  const taken = new Set<string>();
+  const condensers = base.condensers.map((u) => {
+    let model = u.model;
+    const def = getCondenser(model);
+    if (def.line !== line) {
+      const options = CONDENSERS.filter((x) => x.line === line && x.type === def.type);
+      model = options.reduce((a, b) => (Math.abs(b.btu - def.btu) < Math.abs(a.btu - def.btu) ? b : a)).sku;
+    }
+    const serves = u.serves.filter((id) => splitIds.has(id) && !taken.has(id));
+    serves.forEach((id) => taken.add(id));
+    return { ...u, model, serves };
+  });
+  const withShelves = { ...withDoors, evaporators, condensers, accessories: { ...withDoors.accessories, shelving } };
   return { ...withShelves, control: normalizeControl(withShelves, lengths) };
 }
 
@@ -150,7 +166,7 @@ export function normalize(config: Configuration): Configuration {
   return { ...config, compartments };
 }
 
-export function validateCompartment(c: Compartment): Issue[] {
+export function validateCompartment(c: Compartment, site: 'indoor' | 'outdoor' = 'indoor'): Issue[] {
   const issues: Issue[] = [];
   const id = c.id;
   const fp = footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
@@ -246,7 +262,48 @@ export function validateCompartment(c: Compartment): Issue[] {
     );
   });
 
+  // Condensing units
+  const servedBy = new Map<string, string>();
+  c.condensers.forEach((u) => u.serves.forEach((id) => servedBy.set(id, u.id)));
+  splitEvaporators(c).forEach((e) => {
+    if (!servedBy.has(e.id)) {
+      issues.push({
+        compartmentId: id,
+        tab: 'refrigeration',
+        severity: 'warning',
+        message: `Evaporator ${e.id.replace('ev', 'E')} has no condensing unit.`,
+        targets: [{ type: 'part', id: `${c.id}:evap-${e.id}` }],
+      });
+    }
+  });
+  c.condensers.forEach((u) => {
+    const tag = u.id.replace('cu', 'CU');
+    const sku = getCondenser(u.model).sku;
+    const chk = checkCondenser(c, u, site);
+    const target = [{ type: 'part' as const, id: `${c.id}:cu-${u.id}` }];
+    chk.errors.forEach((m) => err('refrigeration', `Condensing unit ${tag} (${sku}) ${m}.`, undefined, target));
+    chk.warnings.forEach((m) => issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `Condensing unit ${tag} (${sku}) ${m}.`, targets: target }));
+  });
+
   const ctl = getControl(c.control.model);
+  // Controller limits against the compressors it runs (condensing units and packaged units).
+  const loads = [
+    ...c.condensers.map((u) => getCondenser(u.model)),
+    ...c.evaporators.map((e) => getEvaporator(e.model)).filter((d) => d.kind === 'packaged'),
+  ];
+  const hp = loads.reduce((n, d) => n + (d.hp ?? 0), 0);
+  if (ctl?.id === 'TSC2000' && hp > 0) {
+    const on110 = loads.some((d) => d.volts.startsWith('110'));
+    if (on110 && hp > CONTROL_LIMITS.volts110Hp) {
+      issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `The Smart Control handles up to ${CONTROL_LIMITS.volts110Hp} HP at 110V; this compartment has ${hp} HP.` });
+    }
+    if (hp > CONTROL_LIMITS.volts220Hp) {
+      issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `Over ${CONTROL_LIMITS.volts220Hp} HP (${hp} HP here) the Smart Control needs the ICC Control Box. It is added to the part list.` });
+    }
+  }
+  if (ctl?.id === 'TC1000' && loads.some((d) => !d.volts.startsWith('110'))) {
+    issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: 'The Temperature Controller is meant for 120V equipment; this compartment has 220V units. Consider the Smart Control.' });
+  }
   if (ctl) {
     const why = controlBlocked(c);
     if (why) {
@@ -263,7 +320,7 @@ export function validateCompartment(c: Compartment): Issue[] {
 }
 
 export function validate(config: Configuration): Issue[] {
-  const issues = config.compartments.flatMap(validateCompartment);
+  const issues = config.compartments.flatMap((c) => validateCompartment(c, config.site.type));
   const name = (id: string) => config.compartments.find((c) => c.id === id)?.name ?? id;
   for (const [a, b] of overlappingCompartments(config)) {
     for (const [id, other] of [[a, b], [b, a]]) {

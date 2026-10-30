@@ -13,7 +13,15 @@
 - **Unit sizes.** Proportions now come from the evaporator artwork, scaled by an estimated fan size (1-fan cooler about 28" × 17" × 16"; 3-fan freezer about 79" × 22½" × 20"). Send length × height × depth (and weight) per model; the rear gap rule and headroom depend on the height.
 - **Values to check on the ICC pages:** EVC1000 lists the same 1 fan and 1523 CFM as EVC500 at nearly twice the capacity; EVC2000-4000 share one airflow; EVF3000 lists TES2-5 below EVF2000's TES2-6; heater counts are blank on EVF2000-4000.
 - **Load and model choice.** The customer picks models. A heat-load estimate (to suggest a model and check total BTU/h) is not built; it needs engineering sign-off first.
-- **Condensing units** come next; pairing them waits on the capacity tables being confirmed.
+## Condensing units
+
+- **Capacity tolerance.** Under 75% of the evaporator load is blocked, over 125% warned; ICC's matched pairs run 77-93%. Confirm the range.
+- **Site power.** No site power setting yet; each unit shows its own power (three SUOF models are 220V 3ph). Add one?
+- **Values to check:** SUOC1000 compressor "NT622GK" (NT6226GK elsewhere); SUIF2000 YF41E7G vs SUOF2000 YF41E3G at the same rating; SUIF2000 RLA 25.2 vs SUOF2000 28; SUIF1000 at 3 HP for 8,913 BTU/h.
+- **Sizes.** All condensing and packaged units use estimated sizes; send dimensions or artwork.
+- **ICC Control Box** model number (needed over 5 HP with the Smart Control).
+- **Liquid line solenoid valves** for shared units are noted as installer supplied. Does ICC sell one?
+- **Evaporator fan rule of thumb** (1 fan ≈ 4,000-7,000 BTU/h; 200-250 CFM per 1,000 BTU/h) doesn't match several ICC evaporators (EVC4000: 2 fans for 41,037 BTU/h). Left as data to check, not a rule.
 
 ## Products from artwork
 

@@ -13,6 +13,7 @@ import {
 } from '@wic/core';
 import { useActiveCompartment, useStore } from '../store';
 import { EvaporatorsSection } from './EvaporatorsSection';
+import { CondensersSection } from './CondensersSection';
 import { Section, Slider, Toggle } from '../shell/controls';
 
 export function RefrigerationTab() {
@@ -30,6 +31,7 @@ export function RefrigerationTab() {
   return (
     <>
       <EvaporatorsSection c={c} />
+      <CondensersSection c={c} />
 
       <Section title="Controller">
         <Toggle<ControlModel>
@@ -104,9 +106,7 @@ export function RefrigerationTab() {
         </Section>
       )}
 
-      <Section title="Condensing unit">
-        <p className="panel-note">Condensing units come next. Pairing them with the evaporators waits on the capacity tables being confirmed.</p>
-      </Section>
+
     </>
   );
 }

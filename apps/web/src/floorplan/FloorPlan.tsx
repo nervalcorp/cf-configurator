@@ -33,6 +33,9 @@ import {
   pickHandle,
   slideDoor,
   shelvingRect,
+  condenserRect,
+  getCondenser,
+  updateCondenser,
   evaporatorPlan,
   evaporatorThrow,
   getEvaporator,
@@ -96,9 +99,22 @@ function project(f: WallFrame, T: number, p: Vec2) {
   return { along: dx * f.u[0] + dy * f.u[1], out: dx * f.n[0] + dy * f.n[1] - T };
 }
 
-type Mode = 'shape' | 'doors' | 'shelving' | 'evaporators';
+type Mode = 'shape' | 'doors' | 'shelving' | 'evaporators' | 'condensers';
 
-function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: Mode, active: number, selected: string | null, pick: DoorPick, shelf: string | null, evap: string | null) {
+/** How far outdoor condensing units sit beyond the footprint, so the view can include them. */
+function unitMargin(c: Compartment): number {
+  const fp = fpOf(c);
+  const maxX = Math.max(...fp.map((p) => p[0]));
+  const maxY = Math.max(...fp.map((p) => p[1]));
+  let m = 0;
+  for (const u of c.condensers) {
+    const r = condenserRect(u);
+    m = Math.max(m, -r.minX, -r.minY, r.maxX - maxX, r.maxY - maxY);
+  }
+  return m > 0 ? m + 150 : 0;
+}
+
+function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: Mode, active: number, selected: string | null, pick: DoorPick, shelf: string | null, evap: string | null, cuSel: string | null) {
   const fp = fpOf(c);
   const n = fp.length;
   const cw = isClockwise(fp);
@@ -422,6 +438,41 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: M
     ctx.fillText(e.id.replace('ev', 'E'), cx, cy);
   }
 
+  // Condensing units: roof units dashed (they sit on top), outdoor units solid; a dotted line to each evaporator served
+  for (const u of c.condensers) {
+    const r = condenserRect(u);
+    const def = getCondenser(u.model);
+    const sel = mode === 'condensers' && u.id === cuSel;
+    const faint = mode !== 'condensers' && mode !== 'evaporators';
+    const [x0, y0] = P([r.minX, r.minY]);
+    const [x1, y1] = P([r.maxX, r.maxY]);
+    const [cx, cy] = P([u.x, u.y]);
+    if (!faint) {
+      ctx.strokeStyle = 'rgba(14,154,167,0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      for (const id of u.serves) {
+        const e = c.evaporators.find((x) => x.id === id);
+        if (!e) continue;
+        const [ex, ey] = P(evaporatorPlan(c, e).center);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash(def.type === 'indoor' ? [5, 3] : []);
+    ctx.fillStyle = sel ? 'rgba(20,184,200,0.25)' : faint ? 'rgba(71,85,105,0.10)' : 'rgba(71,85,105,0.2)';
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = sel ? '#0e9aa7' : '#334155';
+    ctx.lineWidth = sel ? 2 : 1.2;
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.setLineDash([]);
+    ctx.fillStyle = sel ? '#0e7490' : '#334155';
+    ctx.font = '700 10px Outfit, sans-serif';
+    ctx.fillText(u.id.replace('cu', 'CU'), cx, cy);
+  }
+
   // Controller: a small dark tab on the outside of its wall
   const ctl = getControl(c.control.model);
   const cf = frames[c.control.wall];
@@ -466,7 +517,8 @@ type Drag =
   | { type: 'corner'; handle: DragHandle; view: View; vertex: number }
   | { type: 'door'; id: string; view: View; grab: number }
   | { type: 'shelf'; id: string; view: View; dx: number; dy: number }
-  | { type: 'evap'; id: string; view: View };
+  | { type: 'evap'; id: string; view: View }
+  | { type: 'cu'; id: string; view: View; dx: number; dy: number };
 
 export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPick }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -474,15 +526,16 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPic
   const selected = useStore((s) => s.ui.selectedDoor);
   const shelf = useStore((s) => s.ui.selectedShelf);
   const evap = useStore((s) => s.ui.selectedEvap);
+  const cuSel = useStore((s) => s.ui.selectedCu);
   const { editCompartment, commit, setUi } = useStore.getState();
   const drag = useRef<Drag | null>(null);
 
-  const viewNow = () => drag.current?.view ?? fitView(fpOf(comp), maxSwing(comp));
+  const viewNow = () => drag.current?.view ?? fitView(fpOf(comp), Math.max(maxSwing(comp), unitMargin(comp)));
 
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d');
     const d = drag.current;
-    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected, pick, shelf, evap);
+    if (ctx) draw(ctx, comp, viewNow(), mode, d?.type === 'corner' ? d.vertex : -1, selected, pick, shelf, evap, cuSel);
   });
 
   const pos = (e: React.PointerEvent): Vec2 => {
@@ -536,7 +589,16 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPic
       onPointerDown={(e) => {
         const v = viewNow();
         const p = pos(e);
-        if (mode === 'evaporators') {
+        if (mode === 'condensers') {
+          const [px, py] = toPlan(v, ...p);
+          const hit = [...comp.condensers].reverse().find((u) => {
+            const r = condenserRect(u);
+            return px >= r.minX && px <= r.maxX && py >= r.minY && py <= r.maxY;
+          });
+          if (!hit) return;
+          setUi({ selectedCu: hit.id });
+          drag.current = { type: 'cu', id: hit.id, view: v, dx: px - hit.x, dy: py - hit.y };
+        } else if (mode === 'evaporators') {
           const pt = toPlan(v, ...p);
           const hit = [...comp.evaporators].reverse().find((e) => insideQuad(evaporatorPlan(comp, e).corners, pt));
           if (hit) {
@@ -586,6 +648,16 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPic
         const d = drag.current;
         const v = viewNow();
         if (!d) {
+          if (mode === 'condensers') {
+            const [px, py] = toPlan(v, ...pos(e));
+            e.currentTarget.style.cursor = comp.condensers.some((u) => {
+              const r = condenserRect(u);
+              return px >= r.minX && px <= r.maxX && py >= r.minY && py <= r.maxY;
+            })
+              ? 'grab'
+              : 'default';
+            return;
+          }
           if (mode === 'evaporators') {
             const pt = toPlan(v, ...pos(e));
             e.currentTarget.style.cursor = comp.evaporators.some((x) => insideQuad(evaporatorPlan(comp, x).corners, pt)) ? 'grab' : evap ? 'copy' : 'default';
@@ -608,6 +680,9 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPic
         const [px, py] = toPlan(d.view, ...pos(e));
         if (d.type === 'corner') {
           editCompartment((c) => dragHandle(c, d.handle, [px, py]), { transient: true });
+        } else if (d.type === 'cu') {
+          const snap = (q: number) => Math.round(q / 25.4) * 25.4;
+          editCompartment((c) => updateCondenser(c, d.id, { x: snap(px - d.dx), y: snap(py - d.dy) }), { transient: true });
         } else if (d.type === 'evap') {
           const spot = evapSpot(comp, d.id, [px, py]);
           if (spot) editCompartment((c) => updateEvaporator(c, d.id, spot), { transient: true });
@@ -631,7 +706,7 @@ export function FloorPlan({ mode, pick = 'doors' }: { mode: Mode; pick?: DoorPic
         if (!drag.current) return;
         drag.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
-        e.currentTarget.style.cursor = mode === 'shelving' || mode === 'evaporators' ? 'default' : 'crosshair';
+        e.currentTarget.style.cursor = mode === 'shelving' || mode === 'evaporators' || mode === 'condensers' ? 'default' : 'crosshair';
         commit();
       }}
     />

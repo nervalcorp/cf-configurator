@@ -384,6 +384,16 @@ export type EvapLine = 'cooler' | 'freezer';
 export interface EvaporatorDef {
   sku: string;
   line: EvapLine;
+  /** 'packaged' = self-contained (ICC-MBIC / MBIF): its own evaporator and condenser. */
+  kind: 'split' | 'packaged';
+  /** Packaged units only. */
+  hp?: number;
+  condenserCfm?: number;
+  refrigerants?: string;
+  rla?: number;
+  fla?: number;
+  lra?: number;
+  compressor?: string;
   btu: number;
   fans: number;
   cfmPerFan: number;
@@ -406,6 +416,7 @@ function evap(sku: string, line: EvapLine, btu: number, fans: number, cfmPerFan:
   return {
     sku,
     line,
+    kind: 'split' as const,
     btu,
     fans,
     cfmPerFan,
@@ -435,7 +446,35 @@ export const EVAPORATORS: readonly EvaporatorDef[] = [
   evap('ICC-EVF4000', 'freezer', 39579, 3, 4073, '220V/3ph/60Hz', 40, 'TES2-6', '1 kW × 6'),
 ];
 
-export const getEvaporator = (sku: string) => EVAPORATORS.find((e) => e.sku === sku) ?? EVAPORATORS[2];
+/**
+ * Packaged (self-contained) units: a condensing section on the roof and an
+ * evaporator section that drops through the ceiling. Sizes are ESTIMATES: the
+ * part inside (what the placement rules see) about 22" × 9" × 14".
+ */
+function packaged(sku: string, line: EvapLine, btu: number, hp: number, evapCfm: number, condCfm: number, rla: number, fla: number, lra: number, compressor: string, minCircuit: number): EvaporatorDef {
+  return {
+    sku, line, kind: 'packaged', btu, fans: 1, cfmPerFan: evapCfm, volts: '220V/1ph/60Hz', minCircuit,
+    txv: '—', hp, condenserCfm: condCfm, refrigerants: 'R448A, R404A, R449A', rla, fla, lra, compressor,
+    length: inToMm(22), height: inToMm(9), depth: inToMm(14), fanDiameter: inToMm(8), sizeEstimated: true,
+  };
+}
+
+export const PACKAGED: readonly EvaporatorDef[] = [
+  packaged('ICC-MBIC350', 'cooler', 3741, 1 / 3, 706, 1059, 3.1, 3.2, 16.2, 'SC10CLX', 15),
+  packaged('ICC-MBIC500', 'cooler', 4510, 0.5, 982, 1100, 5.7, 5.5, 34, 'NEU6215GK', 15),
+  packaged('ICC-MBIC750', 'cooler', 7503, 0.75, 982, 1100, 4.3, 4.2, 23.4, 'SC18MLX', 15),
+  packaged('ICC-MBIC1000', 'cooler', 9553, 1, 982, 1100, 9, 6.8, 43, 'NT6226GK', 15),
+  packaged('ICC-MBIC1500', 'cooler', 14266, 1.5, 1100, 1100, 12.2, 8.5, 60, 'NJ9238GK', 20),
+  packaged('ICC-MBIF450', 'freezer', 4708, 1.5, 1100, 1100, 9.2, 9, 54, 'NJ2212GJ', 15),
+  packaged('ICC-MBIF600', 'freezer', 6784, 2, 1589, 1589, 16.1, 12.2, 76, 'YF13E3G', 20),
+  packaged('ICC-MBIF1000', 'freezer', 8913, 3, 1589, 1589, 19.4, 11.4, 76, 'YF20E3G', 20),
+  packaged('ICC-MBIF1500', 'freezer', 13427, 4, 1589, 1589, 28, 16.1, 109, 'YF29E3G', 40),
+];
+
+/** Every ceiling unit: split evaporators and packaged units. */
+export const CEILING_UNITS: readonly EvaporatorDef[] = [...EVAPORATORS, ...PACKAGED];
+
+export const getEvaporator = (sku: string) => CEILING_UNITS.find((e) => e.sku === sku) ?? EVAPORATORS[2];
 
 /** The model a new unit starts with; the customer picks the real one. */
 export const DEFAULT_EVAPORATOR: Record<EvapLine, string> = { cooler: 'ICC-EVC1500', freezer: 'ICC-EVF1500' };
@@ -459,3 +498,109 @@ export const EVAP_RULES = {
   /** Hung this far below the ceiling. */
   ceilingGap: inToMm(1),
 };
+
+// ── Condensing units ──
+
+/**
+ * ICC condensing units, from the ICC Condenser pages (R448A). Cooler units are
+ * rated at 25°F evap / 105°F cond, freezer units at -10°F / 105°F.
+ *   indoor  ICC-SUIC / SUIF: on a base plate, normally on the walk-in roof indoors
+ *   outdoor ICC-SUOC / SUOF: slim cabinet on legs, outside on a pad
+ * Packaged (self-contained) ICC-MBIC / MBIF units are listed with the evaporators,
+ * since each one is its own evaporator and condenser.
+ *
+ * CONFIRM, values that look off on the pages: SUOC1000 compressor "NT622GK"
+ * (NT6226GK elsewhere); SUIF2000 compressor YF41E7G vs SUOF2000 YF41E3G with the
+ * same rating; SUIF1000 at 3 HP for 8,913 BTU/h.
+ * Sizes are ESTIMATES until spec sheets arrive.
+ */
+export type CondenserType = 'indoor' | 'outdoor';
+
+export interface CondenserDef {
+  sku: string;
+  line: EvapLine;
+  type: CondenserType;
+  btu: number;
+  hp: number;
+  fans: number;
+  cfmPerFan: number;
+  volts: string;
+  rla: number;
+  fla: number;
+  lra: number;
+  compressor: string;
+  minCircuit: number;
+  highPressure: number;
+  /** Estimated size: width, height, depth (mm). */
+  width: number;
+  height: number;
+  depth: number;
+}
+
+function cu(sku: string, line: EvapLine, type: CondenserType, btu: number, hp: number, fans: number, cfmPerFan: number, volts: string, rla: number, fla: number, lra: number, compressor: string, minCircuit: number): CondenserDef {
+  // Size estimates: indoor cabinets grow with fans; outdoor slim cabinets by fan count and airflow.
+  const big = cfmPerFan >= 3000;
+  const w = type === 'indoor' ? (fans > 1 ? 30 : 20) : fans > 1 ? 52 : big ? 40 : 34;
+  const h = type === 'indoor' ? 20 : big ? 26 : 22;
+  const d = type === 'indoor' ? 18 : 14;
+  return {
+    sku, line, type, btu, hp, fans, cfmPerFan, volts, rla, fla, lra, compressor, minCircuit,
+    highPressure: type === 'indoor' ? 597.63 : 507.63,
+    width: inToMm(w),
+    height: inToMm(h),
+    depth: inToMm(d),
+  };
+}
+
+export const CONDENSERS: readonly CondenserDef[] = [
+  cu('ICC-SUIC386', 'cooler', 'indoor', 3915, 0.33, 1, 928, '110V/60Hz', 5.7, 0.35, 41.9, 'SC10CL', 15),
+  cu('ICC-SUIC500', 'cooler', 'indoor', 4510, 0.5, 1, 928, '220V/1ph/60Hz', 5.7, 0.35, 34, 'NEU6215GK', 15),
+  cu('ICC-SUIC530', 'cooler', 'indoor', 5846, 0.75, 1, 1523, '110V/60Hz', 7, 0.81, 69, 'SC15MLX', 20),
+  cu('ICC-SUIC700', 'cooler', 'indoor', 6696, 1, 1, 1523, '220V/1ph/60Hz', 7, 0.81, 37, 'NT6222GK', 15),
+  cu('ICC-SUIC1000', 'cooler', 'indoor', 9553, 1, 1, 1523, '220V/1ph/60Hz', 9, 0.81, 43, 'NT6226GK', 16),
+  cu('ICC-SUIC1500', 'cooler', 'indoor', 14266, 1.5, 1, 1523, '220V/1ph/60Hz', 12.2, 0.81, 60, 'NJ9238GK', 20),
+  cu('ICC-SUOC500', 'cooler', 'outdoor', 4510, 0.5, 1, 1523, '220V/1ph/60Hz', 5.7, 1.67, 34, 'NEU6215GK', 15),
+  cu('ICC-SUOC700', 'cooler', 'outdoor', 6696, 1, 1, 1523, '220V/1ph/60Hz', 7, 1.67, 37, 'NT6222GK', 15),
+  cu('ICC-SUOC1000', 'cooler', 'outdoor', 9553, 1, 1, 1523, '220V/1ph/60Hz', 9, 1.67, 43, 'NT622GK', 15),
+  cu('ICC-SUOC1500', 'cooler', 'outdoor', 14266, 1.5, 1, 2302, '220V/1ph/60Hz', 12.2, 1.67, 60, 'NJ9238GK', 20),
+  cu('ICC-SUOC2000', 'cooler', 'outdoor', 18853, 2, 1, 3151, '220V/1ph/60Hz', 19.5, 1.67, 76, 'YM34E3G', 30),
+  cu('ICC-SUOC3000', 'cooler', 'outdoor', 25661, 3, 1, 3151, '220V/1ph/60Hz', 21.8, 1.67, 76, 'YM49E3G', 30),
+  cu('ICC-SUOC4000', 'cooler', 'outdoor', 36659, 4, 2, 2302, '220V/1ph/60Hz', 34, 2.48, 140, 'YM70E3G', 50),
+  cu('ICC-SUIF1000', 'freezer', 'indoor', 8913, 3, 1, 2302, '220V/1ph/60Hz', 19.4, 1.24, 76, 'YF20E3G', 30),
+  cu('ICC-SUIF1500', 'freezer', 'indoor', 13427, 4, 2, 1523, '220V/1ph/60Hz', 28, 1.62, 109, 'YF29E3G', 40),
+  cu('ICC-SUIF2000', 'freezer', 'indoor', 19412, 6, 2, 2302, '220V/1ph/60Hz', 25.2, 2.48, 167, 'YF41E7G', 40),
+  cu('ICC-SUOF1000', 'freezer', 'outdoor', 8913, 3, 1, 3151, '220V/1ph/60Hz', 19.4, 1.67, 76, 'YF20E3G', 30),
+  cu('ICC-SUOF1500', 'freezer', 'outdoor', 13427, 4, 2, 2302, '220V/1ph/60Hz', 28, 2.48, 109, 'YF29E3G', 40),
+  cu('ICC-SUOF2000', 'freezer', 'outdoor', 19412, 6, 2, 2302, '220V/1ph/60Hz', 28, 2.48, 167, 'YF41E3G', 40),
+  cu('ICC-SUOF3000', 'freezer', 'outdoor', 28605, 7, 2, 3151, '220V/3ph/60Hz', 37.4, 3.34, 241, 'YSF60E7G', 50),
+  cu('ICC-SUOF4000', 'freezer', 'outdoor', 36005, 9, 2, 4111, '220V/3ph/60Hz', 46.6, 4.2, 241, 'YSF75E7G', 60),
+];
+
+export const getCondenser = (sku: string) => CONDENSERS.find((c) => c.sku === sku) ?? CONDENSERS[0];
+
+/**
+ * Pairing rules (from John's rules notes): how many evaporators one condensing
+ * unit may serve, by installation and temperature. Freezers are strictly 1:1
+ * (defrost sync and oil return); outdoor coolers up to 2 (head pressure swings,
+ * long line sets); indoor coolers up to 3. Packaged units are 1:1 by design.
+ */
+export const MAX_EVAPS_PER_CU: Record<CondenserType, Record<EvapLine, number>> = {
+  indoor: { cooler: 3, freezer: 1 },
+  outdoor: { cooler: 2, freezer: 1 },
+};
+
+/**
+ * Capacity match against the combined BTU/h of the evaporators a unit serves.
+ * ICC's own matched pairs (same model number: EVC1000 + SUIC1000 and so on) put
+ * the condensing unit at 77-93% of the evaporator's rating, since evaporators
+ * are rated a little above the unit they pair with. So: under 75% is too small
+ * (not offered); 85% is the target when choosing for several evaporators; over
+ * 125% will short-cycle (warned). CONFIRM tolerances.
+ */
+export const CU_MATCH = { min: 0.75, target: 0.85, max: 1.25 };
+
+/** Outdoor units: clear space around the cabinet for air. */
+export const CU_CLEARANCE = inToMm(12);
+
+/** TSC2000 limits; above 5 HP the ICC Control Box is needed. CONFIRM Control Box model number. */
+export const CONTROL_LIMITS = { volts110Hp: 1.5, volts220Hp: 5, controlBox: 'ICC Control Box (model TBD)' };

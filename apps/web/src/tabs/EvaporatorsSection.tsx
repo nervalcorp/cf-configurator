@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import {
   type Compartment,
   EVAPORATORS,
+  PACKAGED,
   EVAP_RULES,
   type Evaporator,
   addEvaporator,
@@ -137,7 +138,8 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
   const def = getEvaporator(e.model);
   const frames = framesFor(c);
   const f = frames[e.wall];
-  const options = EVAPORATORS.filter((x) => x.line === c.temperature);
+  const split = EVAPORATORS.filter((x) => x.line === c.temperature);
+  const packaged = PACKAGED.filter((x) => x.line === c.temperature);
   const need = requiredGap(e.model);
   const half = def.length / 2;
   const loIn = Math.ceil(mmToIn(half));
@@ -158,11 +160,20 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
               set({ model, gap: Math.max(e.gap, requiredGap(model)) });
             }}
           >
-            {options.map((o) => (
-              <option key={o.sku} value={o.sku}>
-                {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.fans} fan{o.fans === 1 ? '' : 's'}
-              </option>
-            ))}
+            <optgroup label="Split evaporators (need a condensing unit)">
+              {split.map((o) => (
+                <option key={o.sku} value={o.sku}>
+                  {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.fans} fan{o.fans === 1 ? '' : 's'}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Packaged units (self-contained)">
+              {packaged.map((o) => (
+                <option key={o.sku} value={o.sku}>
+                  {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.hp} HP
+                </option>
+              ))}
+            </optgroup>
           </select>
         </label>
         <dl className="summary spec">
@@ -172,7 +183,15 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
             ['Airflow', `${def.cfmPerFan.toLocaleString('en-US')}${def.fans > 1 ? ` × ${def.fans}` : ''} CFM`],
             ['Power', def.volts],
             ['Min circuit', `${def.minCircuit} A`],
-            ['TXV', def.txv],
+            ...(def.kind === 'packaged'
+              ? [
+                  ['Type', 'Packaged: its own condenser on the roof'],
+                  ['Horsepower', `${Math.round((def.hp ?? 0) * 100) / 100} HP`],
+                  ['Condenser fan', `${def.condenserCfm?.toLocaleString('en-US')} CFM`],
+                  ['Refrigerants', def.refrigerants ?? ''],
+                  ['Compressor', def.compressor ?? ''],
+                ]
+              : [['TXV', def.txv]]),
             ...(def.heaters ? [['Defrost heaters', def.heaters]] : []),
             ['Size', `${formatInches(def.length)} × ${formatInches(def.height)} × ${formatInches(def.depth)}${def.sizeEstimated ? ' (estimated)' : ''}`],
           ].map(([k, v]) => (

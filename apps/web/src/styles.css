@@ -211,6 +211,13 @@ canvas { display: block; }
 .summary.spec { margin-top: 12px; }
 .wall-chip:disabled { opacity: .35; cursor: not-allowed; }
 
+/* condensing units */
+.check-list { display: grid; gap: 6px; margin-top: 4px; }
+.check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-dark); cursor: pointer; }
+.check-row input { margin-top: 2px; accent-color: var(--accent); }
+.check-row.disabled { color: var(--text-light); cursor: not-allowed; }
+.check-row em { font-style: normal; color: var(--text-light); }
+
 /* shelving */
 .gravity-grid { display: grid; gap: 4px; padding: 8px; background: var(--input-bg); border: 1.5px solid var(--border); border-radius: var(--radius); }
 .gravity-cell {

@@ -186,8 +186,8 @@ export class SceneController {
     this.airflow.points.visible = on;
   }
 
-  setThrowOpacity(o: number) {
-    this.mats.setThrowOpacity(o);
+  setThrowOpacity(o: number, hover: number) {
+    this.mats.setThrowOpacity(o, hover);
   }
 
   /**
@@ -412,8 +412,10 @@ export class SceneController {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const pickable = [...this.built.values()].flatMap((b) => b.pickable);
-    const hit = this.raycaster.intersectObjects(pickable, false)[0];
+    // Throw zones never block what's behind them: they are picked only when nothing solid is under the pointer.
+    const pickable = [...this.built.values()].flatMap((b) => b.pickable).filter((o) => o.visible);
+    const hits = this.raycaster.intersectObjects(pickable, false);
+    const hit = hits.find((h) => !h.object.userData.throw) ?? hits[0];
     const mesh = (hit?.object as THREE.Mesh | undefined) ?? null;
     if (mesh !== this.hovered) {
       this.restoreHovered();

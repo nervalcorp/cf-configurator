@@ -158,3 +158,29 @@ export function clipPolygon(subject: Polygon, clip: Polygon): Vec2[] {
   }
   return out;
 }
+
+/** Drop repeated points (within `eps` mm) and points lying on a straight run. */
+export function cleanPolygon(poly: Polygon, eps = 0.5): Vec2[] {
+  let pts: Vec2[] = [];
+  for (const p of poly) {
+    const last = pts[pts.length - 1];
+    if (!last || Math.hypot(p[0] - last[0], p[1] - last[1]) > eps) pts.push(p);
+  }
+  if (pts.length > 1 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) <= eps) pts.pop();
+  let changed = true;
+  while (changed && pts.length > 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length];
+      const b = pts[i];
+      const c = pts[(i + 1) % pts.length];
+      const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+      if (Math.abs(cross) < eps * Math.max(1, Math.hypot(c[0] - a[0], c[1] - a[1]))) {
+        pts = pts.filter((_, k) => k !== i);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return pts;
+}

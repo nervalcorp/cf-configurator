@@ -14,8 +14,8 @@
  */
 import type { Compartment, Door, SiteType } from '../config';
 import { LIMITS } from '../config';
-import { CHECKER_PLATE, DOOR_CLOSER_SKU, DOOR_WINDOW, EVAP_RULES, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
-import { type Vec2, bounds, clipPolygon, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
+import { CHECKER_PLATE, getCondenser, DOOR_CLOSER_SKU, DOOR_WINDOW, EVAP_RULES, GLASS_FRAME, HINGE_KIT, RAMP, SHELVING, getControl, rampServes, TRAFFIC_FINISHES, doorMount, doorSize, doorSku, doorTag, getDoorFamily, getGlassSeries } from '../catalog';
+import { type Vec2, bounds, cleanPolygon, clipPolygon, edgeLength, edgeNormal, isClockwise, isInsideCorner, offsetPolygon } from '../geometry';
 import { formatInches, inToMm } from '../units';
 import { footprint } from './shapes';
 import { type WallFrame, findFrontEdge, jointNumber, postSigns, wallFrames } from './walls';
@@ -64,7 +64,8 @@ export type BoxKind =
   | 'evap-housing'
   | 'evap-coil'
   | 'evap-pan'
-  | 'evap-throw';
+  | 'evap-throw'
+  | 'unit';
 
 export type Face = '+x' | '-x' | '+z' | '-z';
 
@@ -419,8 +420,9 @@ export function buildCompartment(c: Compartment, site: SiteType): ComponentTree 
   // ── Shelving inside ──
   for (const u of c.accessories.shelving) parts.push(...shelvingParts(c, u, b, fTop));
 
-  // ── Evaporators at the ceiling ──
+  // ── Evaporators (and packaged units) at the ceiling, condensing units ──
   for (const e of c.evaporators) parts.push(...evaporatorParts(c, e, b, fTop, wallH));
+  for (const u of c.condensers) parts.push(...condenserParts(c, u, b, fTop));
 
   // ── Controller ──
   const ctl = getControl(c.control.model);
@@ -968,8 +970,8 @@ function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], 
   const rot = Math.atan2(into[0], into[1]);
   const top = fTop + wallH - EVAP_RULES.ceilingGap;
   const id = (s: string) => `${c.id}:evap-${e.id}:${s}`;
-  const label = `Evaporator ${e.id.replace('ev', 'E')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h`;
-  const out: Part[] = [
+  const label = `${def.kind === 'packaged' ? 'Packaged unit' : 'Evaporator'} ${e.id.replace('ev', 'E')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h`;
+  const out: Part[] = def.kind === 'packaged' ? packagedParts(c, e, p, b, top, fTop, wallH, label) : [
     {
       kind: 'model',
       id: id('model'),
@@ -993,7 +995,7 @@ function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], 
     [f[0] - side[0] * half + into[0] * reach, f[1] - side[1] * half + into[1] * reach],
   ];
   const inner = offsetPolygon(footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD), -c.wallThickness);
-  const zone = clipPolygon(inner, rect);
+  const zone = cleanPolygon(clipPolygon(inner, rect));
   if (zone.length >= 3) {
     out.push({
       kind: 'zone',
@@ -1003,6 +1005,117 @@ function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], 
       over: t > EVAP_RULES.throwMax,
       label: `${label} · throws ${Math.round(t / 304.8)}'`,
     });
+  }
+  return out;
+}
+
+const UNIT_GREY = '#dfe2e4';
+const UNIT_DARK = '#4a4f55';
+const BADGE = '#1f2a33';
+const COPPER = '#b87333';
+
+/**
+ * Packaged (self-contained) unit, as simple boxes until artwork arrives: the
+ * evaporator section hangs just under the ceiling against its wall (that is
+ * what the placement rules and throw use), the condensing section sits on the
+ * roof above it with louvres and the ICC badge.
+ */
+function packagedParts(
+  c: Compartment,
+  e: Compartment['evaporators'][number],
+  p: ReturnType<typeof evaporatorPlan>,
+  b: { cx: number; cy: number },
+  top: number,
+  fTop: number,
+  wallH: number,
+  label: string,
+): Part[] {
+  const def = p.def;
+  const rot = Math.atan2(p.into[0], p.into[1]);
+  const id = (s: string) => `${c.id}:evap-${e.id}:${s}`;
+  const x = p.center[0] - b.cx;
+  const z = p.center[1] - b.cy;
+  const box = (name: string, lz: number, y: number, size: Vec3, color: string, extra: Partial<BoxPart> = {}): BoxPart => ({
+    kind: 'unit',
+    id: id(name),
+    center: [x + p.into[0] * lz, y, z + p.into[1] * lz],
+    size,
+    rotationY: rot,
+    color,
+    label,
+    ...extra,
+  });
+  const roof = fTop + wallH + c.wallThickness;
+  const R = { w: inToMm(30), h: inToMm(16), d: inToMm(22) };
+  return [
+    // Inside: the evaporator section, fan facing the room
+    box('drop', 0, top - def.height / 2, [def.length, def.height, def.depth], UNIT_GREY),
+    { kind: 'fan', id: id('fan'), center: [x + p.into[0] * (def.depth / 2 + 6), top - def.height / 2, z + p.into[1] * (def.depth / 2 + 6)], radius: def.fanDiameter / 2, height: 12, axis: 'z', rotationY: rot, label },
+    // Through the ceiling, then the condensing section on the roof
+    box('neck', 0, (top + roof) / 2, [def.length * 0.8, roof - top, def.depth * 0.8], UNIT_DARK),
+    box('roof-cabinet', 0, roof + R.h / 2, [R.w, R.h, R.d], UNIT_GREY),
+    box('louvre', -R.d / 2 - 2, roof + R.h / 2, [R.w * 0.38, R.h * 0.7, 4], UNIT_DARK),
+    box('badge', R.d / 2 + 2, roof + R.h / 2, [inToMm(4.5), inToMm(5), 3], BADGE, { logo: true }),
+  ];
+}
+
+/**
+ * Condensing unit, as simple boxes until artwork arrives.
+ * Indoor (SUIC/SUIF): flat base plate on the roof, cabinet with a copper coil
+ * face on one side, dark compressor box beside it, ICC badge on the front.
+ * Outdoor (SUOC/SUOF): slim cabinet on two legs, fan(s) on the left of the face,
+ * service door with the badge on the right, louvred end panel.
+ */
+function condenserParts(c: Compartment, u: Compartment['condensers'][number], b: { cx: number; cy: number }, fTop: number): Part[] {
+  const def = getCondenser(u.model);
+  const rot = (u.rotation * Math.PI) / 180;
+  const fx = Math.sin(rot);
+  const fz = Math.cos(rot); // local +z (front)
+  const sx = Math.cos(rot);
+  const sz = -Math.sin(rot); // local +x
+  const x0 = u.x - b.cx;
+  const z0 = u.y - b.cy;
+  const at = (lx: number, y: number, lz: number): Vec3 => [x0 + sx * lx + fx * lz, y, z0 + sz * lx + fz * lz];
+  const id = (s: string) => `${c.id}:cu-${u.id}:${s}`;
+  const label = `Condensing unit ${u.id.replace('cu', 'CU')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h · ${def.hp} HP`;
+  const box = (name: string, lx: number, y: number, lz: number, size: Vec3, color: string, extra: Partial<BoxPart> = {}): BoxPart => ({
+    kind: 'unit',
+    id: id(name),
+    center: at(lx, y, lz),
+    size,
+    rotationY: rot,
+    color,
+    label,
+    ...extra,
+  });
+  const W = def.width;
+  const H = def.height;
+  const D = def.depth;
+  const out: Part[] = [];
+  if (def.type === 'indoor') {
+    const roof = fTop + c.height + c.wallThickness;
+    const plate = 38;
+    out.push(box('plate', 0, roof + plate / 2, 0, [W * 1.6, plate, D * 1.5], UNIT_GREY));
+    const y = roof + plate + H / 2;
+    out.push(box('cabinet', W * 0.15, y, 0, [W * 0.8, H, D], UNIT_GREY));
+    out.push(box('coil', W * 0.15 - W * 0.4 - 4, y, 0, [8, H * 0.92, D * 0.92], COPPER));
+    out.push(box('compressor', -W * 0.55, roof + plate + H * 0.3, 0, [W * 0.45, H * 0.6, D * 0.7], UNIT_DARK));
+    out.push(box('badge', W * 0.15, y + H * 0.05, D / 2 + 2, [inToMm(4.5), inToMm(5), 3], BADGE, { logo: true }));
+  } else {
+    const leg = inToMm(4);
+    const y = leg + H / 2; // on the ground, outside
+    out.push(box('cabinet', 0, y, 0, [W, H, D], UNIT_GREY));
+    for (const s of [-1, 1]) out.push(box(`leg-${s}`, s * (W / 2 - inToMm(3)), leg / 2, 0, [inToMm(2), leg, D * 1.2], UNIT_DARK));
+    out.push(box('louvre', -W / 2 - 2, y, 0, [4, H * 0.85, D * 0.8], UNIT_DARK));
+    const fanR = Math.min(H * 0.38, (W * (def.fans > 1 ? 0.3 : 0.55)) / 2);
+    const fanArea = W * (def.fans > 1 ? 0.7 : 0.6);
+    for (let i = 0; i < def.fans; i++) {
+      const lx = -W / 2 + (fanArea / def.fans) * (i + 0.5);
+      out.push({ kind: 'fan', id: id(`fan-${i + 1}`), center: at(lx, y, D / 2 + 8), radius: fanR, height: 14, axis: 'z', rotationY: rot, label });
+    }
+    const doorW = W - fanArea - inToMm(1);
+    out.push(box('door', W / 2 - doorW / 2 - inToMm(0.5), y, D / 2 + 3, [doorW, H * 0.9, 6], UNIT_GREY));
+    out.push(box('badge', W / 2 - doorW / 2 - inToMm(0.5), y + H * 0.05, D / 2 + 8, [inToMm(5), inToMm(5.5), 3], BADGE, { logo: true }));
   }
   return out;
 }
