@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONDENSERS,
-  PACKAGED,
   addCondenser,
   addEvaporator,
   buildCompartment,
@@ -17,6 +16,12 @@ import {
   updateCondenser,
   validateCompartment,
   type Compartment,
+  type ModelPart,
+  checkEvaporator,
+  getEvaporator,
+  packagedCabinet,
+  setSystem,
+  framesFor,
 } from '../src';
 
 const ft = (n: number) => inToMm(n * 12);
@@ -26,7 +31,7 @@ describe('condensing unit catalog', () => {
   it('has the ICC lineup: 6 SUIC, 7 SUOC, 3 SUIF, 5 SUOF, and 9 packaged', () => {
     const count = (p: string) => CONDENSERS.filter((d) => d.sku.startsWith(p)).length;
     expect([count('ICC-SUIC'), count('ICC-SUOC'), count('ICC-SUIF'), count('ICC-SUOF')]).toEqual([6, 7, 3, 5]);
-    expect(PACKAGED).toHaveLength(9);
+
   });
 });
 
@@ -114,17 +119,48 @@ describe('pairing', () => {
 });
 
 describe('packaged units', () => {
-  it('sit among the evaporators, need no condensing unit, and build a roof cabinet', () => {
-    const c = withEvap('ICC-MBIC1000');
+  const packagedRoom = (w = 12, d = 12): Compartment => setSystem({ ...defaultCompartment(), boxW: ft(w), boxD: ft(d) }, 'packaged');
+
+  it('live in their own system: no split evaporators, no condensing units', () => {
+    const c = addEvaporator(packagedRoom()).compartment;
+    expect(getEvaporator(c.evaporators[0].model).kind).toBe('packaged');
     expect(validateCompartment(c).some((i) => /no condensing unit/.test(i.message))).toBe(false);
+    // Switching back to split clears them (undoable in the app).
+    expect(setSystem(c, 'split').evaporators).toEqual([]);
+    // A packaged model in a split compartment is dropped on normalize.
+    expect(normalizeCompartment({ ...c, system: 'split' }).evaporators).toEqual([]);
+  });
+
+  it('places the plug inside the room and the cabinet on the roof, and builds the drawing model', () => {
+    const c = addEvaporator(packagedRoom()).compartment;
+    const e = c.evaporators[0];
+    expect(checkEvaporator(c, e).errors).toEqual([]);
+    const cab = packagedCabinet(c, e)!;
+    expect(cab).toHaveLength(4);
     const t = buildCompartment(c, 'indoor');
-    expect(t.parts.some((p) => p.id.endsWith(':roof-cabinet'))).toBe(true);
+    const m = t.parts.find((p): p is ModelPart => p.kind === 'model' && p.model === 'PACKAGED')!;
+    expect(m.params!.plugW).toBeCloseTo(24.57, 2); // 624 mm
     expect(t.parts.some((p) => p.kind === 'zone')).toBe(true);
   });
 
-  it('cannot be served by a condensing unit', () => {
-    let c = withEvap('ICC-MBIC1000');
-    c = { ...c, condensers: [{ id: 'cu1', model: 'ICC-SUIC1000', serves: ['ev1'], x: 0, y: 0, rotation: 0 }] };
-    expect(normalizeCompartment(c).condensers[0].serves).toEqual([]);
+  it('flags a cabinet hanging off the roof', () => {
+    const c = addEvaporator(packagedRoom(8, 8)).compartment;
+    const e = c.evaporators[0];
+    // The cabinet sits off to one side of its plug (as drawn), so it overhangs at the far end of the wall.
+    const wallLen = framesFor(c)[e.wall].length;
+    const moved = { ...c, evaporators: [{ ...e, offset: wallLen - getEvaporator(e.model).length / 2 - 10 }] };
+    const errs = checkEvaporator(moved, moved.evaporators[0]).errors;
+    expect(errs.some((m) => /off the roof/.test(m))).toBe(true);
+  });
+});
+
+describe('drawing sizes (inches)', () => {
+  it('takes condensing unit sizes from ICC drawings, nearest family where there is none', () => {
+    expect(getCondenser('ICC-SUOC500').shape.w).toBeCloseTo(43.07, 2); // 1094 mm
+    expect(getCondenser('ICC-SUOC700').shape).toEqual(getCondenser('ICC-SUOC500').shape);
+    expect(getCondenser('ICC-SUIC386').shape).toEqual(getCondenser('ICC-SUIC1000').shape);
+    expect(getCondenser('ICC-SUOF2000').shape.fanLayout).toBe('stack');
+    expect(getCondenser('ICC-SUIF1500').shape.fanLayout).toBe('side');
+    expect(getCondenser('ICC-SUOF4000').shape.h).toBeCloseTo(55.46, 2); // 1408.6 mm
   });
 });

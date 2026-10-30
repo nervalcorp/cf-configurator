@@ -1,5 +1,5 @@
 /** Small form controls matching the original panel styles. */
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 export function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
@@ -9,6 +9,42 @@ export function Section({ title, hint, children }: { title: string; hint?: strin
         {hint && <span className="section-hint"> {hint}</span>}
       </h3>
       {children}
+    </section>
+  );
+}
+
+/**
+ * A collapsible card for grouping a step's sections. Closed, it shows a one-line
+ * summary so the panel stays short; the status pill flags problems either way.
+ */
+export function Card({
+  title,
+  step,
+  summary,
+  status,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  step?: string;
+  summary?: ReactNode;
+  status?: { kind: 'ok' | 'warn' | 'error'; text: string };
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`card${open ? ' open' : ''}`}>
+      <button type="button" className="card-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {step && <span className="card-step">{step}</span>}
+        <span className="card-title">{title}</span>
+        {status && <span className={`card-status ${status.kind}`}>{status.text}</span>}
+        <span className="card-chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {!open && summary && <p className="card-summary">{summary}</p>}
+      {open && <div className="card-body">{children}</div>}
     </section>
   );
 }

@@ -31,6 +31,7 @@ export function EvaporatorsSection({ c }: { c: Compartment }) {
   const selectedId = useStore((s) => s.ui.selectedEvap);
   const { editCompartment: edit, setUi } = useStore.getState();
   const units = c.evaporators;
+  const pk = c.system === 'packaged';
   const sel = units.find((e) => e.id === selectedId) ?? units[0];
   // What the rules suggest for this room, without applying it (re-run only when the room changes).
   const roomKey = `${c.shape}|${c.boxW}|${c.boxD}|${c.notchW}|${c.notchD}|${c.height}|${c.temperature}|${c.doors.map((d) => `${d.wall}:${Math.round(d.offset)}:${d.family}`).join(',')}`;
@@ -40,7 +41,7 @@ export function EvaporatorsSection({ c }: { c: Compartment }) {
 
   return (
     <>
-      <Section title="Evaporators" hint="At the ceiling, blowing into the room">
+      <Section title={pk ? 'Units in this room' : 'Units in this room'} hint={pk ? 'Cabinet on the roof, plug through the ceiling' : 'At the ceiling, blowing into the room'}>
         <p className="panel-note first">
           This room is about {ft(c.boxW)} × {ft(c.boxD)}. One unit throws about 25' (20' is comfortable) and covers about 15' of width. The rules suggest{' '}
           <strong>
@@ -68,7 +69,7 @@ export function EvaporatorsSection({ c }: { c: Compartment }) {
                       {chk.errors.length > 0 && <span className="nav-flag inline-flag" aria-label="needs attention" />}
                     </span>
                     <span className="door-where">
-                      {def.btu.toLocaleString('en-US')} BTU/h · {def.fans} fan{def.fans === 1 ? '' : 's'} · wall {f?.letter} · throws {ft(evaporatorThrow(c, e))}
+                      {def.btu.toLocaleString('en-US')} BTU/h · {def.kind === 'packaged' ? `${Math.round((def.hp ?? 0) * 100) / 100} HP` : `${def.fans} fan${def.fans === 1 ? '' : 's'}`} · wall {f?.letter} · throws {ft(evaporatorThrow(c, e))}
                     </span>
                   </button>
                 </li>
@@ -87,7 +88,7 @@ export function EvaporatorsSection({ c }: { c: Compartment }) {
               setUi({ selectedEvap: r.id });
             }}
           >
-            Add evaporator
+            {pk ? 'Add packaged unit' : 'Add evaporator'}
           </button>
           <button
             type="button"
@@ -123,7 +124,7 @@ export function EvaporatorsSection({ c }: { c: Compartment }) {
       </Section>
 
       {units.length > 0 && (
-        <Section title="Ceiling plan" hint="Drag a unit along its wall, or onto another wall">
+        <Section title="Ceiling plan" hint={pk ? 'Plugs solid, cabinets dashed; drag along a wall or onto another' : 'Drag a unit along its wall, or onto another wall'}>
           <FloorPlan mode="evaporators" />
         </Section>
       )}
@@ -148,7 +149,7 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
 
   return (
     <>
-      <Section title={`Evaporator ${tag(e)}`} hint={c.temperature === 'freezer' ? 'Freezer models' : 'Cooler models'}>
+      <Section title={`${def.kind === 'packaged' ? 'Packaged unit' : 'Evaporator'} ${tag(e)}`} hint={c.temperature === 'freezer' ? 'Freezer models' : 'Cooler models'}>
         <label className="field">
           <span className="field-label">Model</span>
           <select
@@ -160,20 +161,11 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
               set({ model, gap: Math.max(e.gap, requiredGap(model)) });
             }}
           >
-            <optgroup label="Split evaporators (need a condensing unit)">
-              {split.map((o) => (
-                <option key={o.sku} value={o.sku}>
-                  {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.fans} fan{o.fans === 1 ? '' : 's'}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Packaged units (self-contained)">
-              {packaged.map((o) => (
-                <option key={o.sku} value={o.sku}>
-                  {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.hp} HP
-                </option>
-              ))}
-            </optgroup>
+            {(def.kind === 'packaged' ? packaged : split).map((o) => (
+              <option key={o.sku} value={o.sku}>
+                {o.sku} · {o.btu.toLocaleString('en-US')} BTU/h · {o.kind === 'packaged' ? `${Math.round((o.hp ?? 0) * 100) / 100} HP` : `${o.fans} fan${o.fans === 1 ? '' : 's'}`}
+              </option>
+            ))}
           </select>
         </label>
         <dl className="summary spec">
@@ -185,7 +177,9 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
             ['Min circuit', `${def.minCircuit} A`],
             ...(def.kind === 'packaged'
               ? [
-                  ['Type', 'Packaged: its own condenser on the roof'],
+                  ['Cabinet (W × D × H)', `${def.packagedShape!.w}" × ${def.packagedShape!.d}" × ${def.packagedShape!.h}" (${def.packagedShape!.bracketD}" across the brackets)`],
+                  ['Ceiling plug', `${def.packagedShape!.plugW}" × ${def.packagedShape!.plugD}" × ${def.packagedShape!.plugH}"`],
+                  ['Drawing', def.packagedShape!.drawing],
                   ['Horsepower', `${Math.round((def.hp ?? 0) * 100) / 100} HP`],
                   ['Condenser fan', `${def.condenserCfm?.toLocaleString('en-US')} CFM`],
                   ['Refrigerants', def.refrigerants ?? ''],
@@ -193,7 +187,7 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
                 ]
               : [['TXV', def.txv]]),
             ...(def.heaters ? [['Defrost heaters', def.heaters]] : []),
-            ['Size', `${formatInches(def.length)} × ${formatInches(def.height)} × ${formatInches(def.depth)}${def.sizeEstimated ? ' (estimated)' : ''}`],
+            ...(def.kind === 'packaged' ? [] : [['Size', `${formatInches(def.length)} × ${formatInches(def.height)} × ${formatInches(def.depth)}${def.sizeEstimated ? ' (estimated)' : ''}`]]),
           ].map(([k, v]) => (
             <div key={k} className="summary-row">
               <dt>{k}</dt>
@@ -232,7 +226,7 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
           onCommit={commit}
         />
         <Slider
-          label="Gap behind the unit"
+          label={def.kind === 'packaged' ? 'Plug distance from the wall' : 'Gap behind the unit'}
           value={Math.round(mmToIn(e.gap))}
           min={6}
           max={48}
@@ -244,8 +238,9 @@ function EvaporatorEditor({ c, e }: { c: Compartment; e: Evaporator }) {
           onCommit={commit}
         />
         <p className="panel-note">
-          Needs at least {formatInches(need)} behind it for return air (the coil height, never under 12"). Keep it off any wall with a door, and keep product
-          12" clear. Units throwing past {Math.round(EVAP_RULES.throwMax / 304.8)}' are flagged.
+          {def.kind === 'packaged'
+            ? `The plug needs ${formatInches(need)} of ceiling between its cut-out and the wall, and the cabinet must sit fully on the roof. Keep it off any wall with a door. Units throwing past ${Math.round(EVAP_RULES.throwMax / 304.8)}' are flagged.`
+            : `Needs at least ${formatInches(need)} behind it for return air (the coil height, never under 12"). Keep it off any wall with a door, and keep product 12" clear. Units throwing past ${Math.round(EVAP_RULES.throwMax / 304.8)}' are flagged.`}
         </p>
       </Section>
     </>

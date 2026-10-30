@@ -211,6 +211,37 @@ canvas { display: block; }
 .summary.spec { margin-top: 12px; }
 .wall-chip:disabled { opacity: .35; cursor: not-allowed; }
 
+/* cards: collapsible groups on a step */
+.card { border: 1px solid var(--border); border-radius: var(--radius); margin: 0 16px 12px; background: var(--panel-bg); overflow: hidden; }
+.card-head {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: none; background: none;
+  cursor: pointer; text-align: left; font: inherit;
+}
+.card-head:hover { background: var(--tab-bg); }
+.card-step {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 700; color: #fff; background: var(--text-dark);
+}
+.card-title { flex: 1; font-size: 14px; font-weight: 600; color: var(--text-dark); }
+.card-status { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.card-status.ok { color: #047857; background: #d1fae5; }
+.card-status.warn { color: #92400e; background: #fef3c7; }
+.card-status.error { color: #b91c1c; background: #fee2e2; }
+.card-chevron { color: var(--text-light); transition: transform .15s; font-size: 12px; }
+.card:not(.open) .card-chevron, .display-options:not(.open) .card-chevron { transform: rotate(-90deg); }
+.card-summary { margin: -4px 14px 12px 46px; font-size: 12.5px; color: var(--text-mid); }
+.card-body { border-top: 1px solid var(--border); }
+.card-body .panel-section { padding-left: 14px; padding-right: 14px; }
+.card-body .panel-section:last-child { border-bottom: none; }
+.system-summary { margin-top: 10px; }
+.card-pad { padding: 14px; }
+/* Buttons inside cards wrap instead of spilling past the panel edge. */
+.card-body .button-row { flex-wrap: wrap; }
+.card-body .button-row .btn { flex: 1 1 auto; min-width: 0; }
+.display-head { width: 100%; display: flex; justify-content: space-between; align-items: center; border: none; background: none; padding: 0; cursor: pointer; }
+.display-head .section-label { margin: 0; }
+.display-body { margin-top: 12px; }
+
 /* condensing units */
 .check-list { display: grid; gap: 6px; margin-top: 4px; }
 .check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-dark); cursor: pointer; }

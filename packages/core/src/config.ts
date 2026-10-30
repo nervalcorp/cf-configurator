@@ -7,7 +7,7 @@ import { inToMm } from './units';
 import type { ShapeId } from './layout/shapes';
 import type { ControlModel, DoorFamilyId, GlassParams, HandleId, ManSeries, TrafficFinish } from './catalog';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export type SiteType = 'indoor' | 'outdoor';
 export type Temperature = 'cooler' | 'freezer';
@@ -157,7 +157,13 @@ export interface Compartment {
     checker: CheckerSquare[];
     shelving: ShelvingUnit[];
   };
-  /** Refrigeration tab: evaporators at the ceiling (split and packaged). */
+  /**
+   * Cooling system: 'split' (evaporators + condensing units) or 'packaged'
+   * (self-contained monoblock units only). The evaporator list holds the units
+   * of the chosen system.
+   */
+  system: 'split' | 'packaged';
+  /** Refrigeration tab: evaporators at the ceiling (split) or packaged units' plugs. */
   evaporators: Evaporator[];
   /** Refrigeration tab: condensing units for the split evaporators. */
   condensers: CondensingUnit[];
@@ -225,6 +231,7 @@ export function defaultCompartment(id = 'c1', name = 'Compartment 1'): Compartme
       floor: 'standard',
     },
     accessories: { ramp: 'exterior', checker: [], shelving: [] },
+    system: 'split',
     evaporators: [],
     condensers: [],
     // Beside door d1 (latch side, hinged right) at eye level.
@@ -275,11 +282,13 @@ export function defaultConfiguration(): Configuration {
  * swing doors had it drawn as standard, so they get it switched on.
  * v7 → v8: evaporators.
  * v8 → v9: condensing units; packaged units join the evaporator list.
+ * v9 → v10: a cooling system choice (split or packaged); files with only
+ * packaged units become packaged.
  */
 export function migrate(input: unknown): Configuration {
   if (!input || typeof input !== 'object') throw new Error('Not a configuration file.');
   const raw = input as { schema?: unknown; site?: { type?: string }; compartments?: unknown[] };
-  if (![1, 2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, SCHEMA_VERSION].includes(raw.schema as number) || !Array.isArray(raw.compartments) || !raw.site) {
     throw new Error(`Unsupported configuration schema: ${String(raw.schema)}.`);
   }
   const base = defaultCompartment();
@@ -318,6 +327,7 @@ export function migrate(input: unknown): Configuration {
         },
         evaporators: c.evaporators ?? [],
         condensers: c.condensers ?? [],
+        system: c.system ?? ((c.evaporators ?? []).length > 0 && (c.evaporators ?? []).every((e) => /MBI[CF]/.test(e.model)) ? 'packaged' : 'split'),
         // wall -1 asks normalize() to place it beside the first door.
         control: c.control ?? { ...base.control, wall: -1 },
       };

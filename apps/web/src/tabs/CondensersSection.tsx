@@ -9,7 +9,6 @@ import {
   checkCondenser,
   condenserOptions,
   defaultCondenserPlace,
-  formatInches,
   getCondenser,
   getEvaporator,
   matchAllEvaporators,
@@ -38,7 +37,7 @@ export function CondensersSection({ c }: { c: Compartment }) {
 
   return (
     <>
-      <Section title="Condensing units" hint="For split evaporators">
+      <Section title="Units" hint="For the split evaporators">
         <p className="panel-note first">
           {split.length === 0
             ? 'Add a split evaporator first. Packaged units carry their own condenser.'
@@ -189,7 +188,8 @@ function CondenserEditor({ c, u }: { c: Compartment; u: CondensingUnit }) {
             ['Compressor', def.compressor],
             ['Min circuit', `${def.minCircuit} A`],
             ['High pressure', `${def.highPressure} PSI`],
-            ['Size', `${formatInches(def.width)} × ${formatInches(def.height)} × ${formatInches(def.depth)} (estimated)`],
+            ['Size (W × D × H)', `${def.shape.w}" × ${def.shape.d}" × ${def.shape.h}"${def.shape.feetD ? ` (${def.shape.feetD}" deep at the feet)` : ''}`],
+            ['Drawing', def.shape.drawing],
           ].map(([k, v]) => (
             <div key={k} className="summary-row">
               <dt>{k}</dt>

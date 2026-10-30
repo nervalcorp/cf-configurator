@@ -18,7 +18,8 @@
 - **Capacity tolerance.** Under 75% of the evaporator load is blocked, over 125% warned; ICC's matched pairs run 77-93%. Confirm the range.
 - **Site power.** No site power setting yet; each unit shows its own power (three SUOF models are 220V 3ph). Add one?
 - **Values to check:** SUOC1000 compressor "NT622GK" (NT6226GK elsewhere); SUIF2000 YF41E7G vs SUOF2000 YF41E3G at the same rating; SUIF2000 RLA 25.2 vs SUOF2000 28; SUIF1000 at 3 HP for 8,913 BTU/h.
-- **Sizes.** All condensing and packaged units use estimated sizes; send dimensions or artwork.
+- **Sizes.** Now from ICC's drawings (in inches). SUIC386/530/700 and SUOC700 use the nearest family's drawing; outdoor feet heights are estimated (not dimensioned).
+- **Packaged plug and thick ceilings.** The plug is 4.33" (110 mm); freezer ceilings thicker than that would need a deeper plug or a curb. The model stretches the plug to reach through; confirm what ICC supplies.
 - **ICC Control Box** model number (needed over 5 HP with the Smart Control).
 - **Liquid line solenoid valves** for shared units are noted as installer supplied. Does ICC sell one?
 - **Evaporator fan rule of thumb** (1 fan ≈ 4,000-7,000 BTU/h; 200-250 CFM per 1,000 BTU/h) doesn't match several ICC evaporators (EVC4000: 2 fans for 41,037 BTU/h). Left as data to check, not a rule.

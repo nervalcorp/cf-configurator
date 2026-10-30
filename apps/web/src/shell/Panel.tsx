@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { TabId } from '@wic/core';
 import { TABS, useStore } from '../store';
 import { Slider, Switch } from './controls';
@@ -20,6 +21,8 @@ const PAGES: Record<TabId, () => React.ReactNode> = {
 };
 
 export function Panel() {
+  // Display options fold away to save space in the panel; closed by default.
+  const [displayOpen, setDisplayOpen] = useState(false);
   const ui = useStore((s) => s.ui);
   const setUi = useStore((s) => s.setUi);
   const idx = TABS.findIndex((t) => t.id === ui.tab);
@@ -43,8 +46,15 @@ export function Panel() {
           <h2 className="panel-title">{TABS[idx].label}</h2>
           <Page />
         </div>
-        <section className="panel-section display-options">
-          <h3 className="section-label">Display options</h3>
+        <section className={`panel-section display-options${displayOpen ? ' open' : ''}`}>
+          <button type="button" className="display-head" aria-expanded={displayOpen} onClick={() => setDisplayOpen(!displayOpen)}>
+            <span className="section-label">Display options</span>
+            <span className="card-chevron" aria-hidden="true">
+              ▾
+            </span>
+          </button>
+          {displayOpen && (
+            <div className="display-body">
           <Switch label="Show dimensions" checked={ui.showDims} onChange={(v) => setUi({ showDims: v })} />
           <Switch label="Wireframe" checked={ui.wireframe} onChange={(v) => setUi({ wireframe: v })} />
           <Switch label="Show airflow" checked={ui.airflow} onChange={(v) => setUi({ airflow: v })} />
@@ -80,6 +90,8 @@ export function Panel() {
                 </>
               )}
             </>
+          )}
+            </div>
           )}
         </section>
         <div className="continue-row">

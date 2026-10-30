@@ -128,11 +128,37 @@ The units are modelled from John's evaporator artwork (`apps/web/src/viewer/evap
 
 On the Refrigeration step each unit shows its air throw as a flat zone under the ceiling, clipped to the room's shape so it never passes through a wall or into a cut-out, with a soft feathered edge (per-vertex alpha, no blur pass). Zones never block clicks: the pointer picks whatever solid part is behind them. Display options has Show air throw, its opacity, and its opacity under the pointer. **Show airflow** adds a light particle loop: cold air jets out of the fans along the ceiling, slows and sinks, runs back along the floor and rises behind the unit into the coil; walls keep particles inside the room. It shows on every step once switched on. It is one point cloud (up to 320 particles) stepped on the CPU each frame, and it starts off for people who ask their system for reduced motion.
 
+## Refrigeration step layout
+
+The step opens with a **Cooling system** card: *Split system* (evaporators + condensing units) or *Packaged (monoblock)* (self-contained units only); switching clears the other system's units (undoable). It shows totals (units, BTU/h, compressor HP) and a status pill. Below come numbered, collapsible cards: Evaporators → Condensing units → Controller for split systems, or Packaged units → Controller. Closed cards show a one-line summary; pills flag notes and problems. Display options fold away (closed by default).
+
+## Unit models and sizes (inches)
+
+Condensing and packaged units are low-poly models built from ICC's general-arrangement drawings (`apps/web/src/viewer/unitModels.ts`), with sizes stored in inches in `catalog.ts` (`CondenserShape`, `PACKAGED_SHAPES`) and procedural textures for fan guards, louvres, copper coil ends and grilles, plus the ICC badge:
+
+| Family | Models | W × D × H (in) |
+|---|---|---|
+| Indoor open frame | SUIC386/500/530/700/1000/1500 (SUIC500 drawing) | 23.62 × 25.59 × 18.66 |
+| | SUIF1000 | 27.56 × 25.59 × 22.44 |
+| | SUIF1500 (2 fans side by side) | 37.40 × 27.56 × 21.26 |
+| | SUIF2000 (2 fans side by side) | 40.55 × 27.56 × 28.31 |
+| Outdoor cabinet | SUOC500/700/1000/1500 (SUOC500 drawing) | 43.07 × 13.82 (16.68 at feet) × 22.45 |
+| | SUOC2000/3000, SUOF1000 | 50.67 × 17.22 (20.08 at feet) × 27.36 |
+| | SUOC4000, SUOF1500/2000 (2 fans stacked) | 50.69 × 17.22 (20.08 at feet) × 39.17 |
+| | SUOF3000 (2 fans stacked) | 55.24 × 20.98 × 47.58 |
+| | SUOF4000 (2 fans stacked) | 55.24 × 20.98 × 55.46 |
+| Packaged | MBIC350-1500, MBIF450 | 45.20 × 26.38 × 18.98 + plug 24.57 × 22.99 × 4.33 |
+| | MBIF600/1000/1500 | 50.98 × 31.10 × 21.65 + plug 25.63 × 27.24 × 4.33 |
+
+Models without their own drawing use the nearest family (SUIC386/530/700 → SUIC500; SUOC700 → SUOC500).
+
+Packaged units sit on the roof with a plug through the ceiling cut-out; the plug is what the placement engine places (6" of ceiling to the wall, inside the room, never over a door), the cabinet must sit fully on the roof, and the air throw leaves the plug's room side. Underneath, the plug shows a fan guard and a discharge grille.
+
 ## Condensing units
 
-On the Refrigeration step, after the evaporators. ICC lineup: coolers ICC-SUIC386 to SUIC1500 (indoor) and SUOC500 to SUOC4000 (outdoor); freezers ICC-SUIF1000 to SUIF2000 (indoor) and SUOF1000 to SUOF4000 (outdoor). Packaged (self-contained) units ICC-MBIC350 to MBIC1500 and MBIF450 to MBIF1500 are picked among the evaporators, since each is its own evaporator and condenser; they need no condensing unit and nothing can connect to them.
+On the Refrigeration step, after the evaporators. ICC lineup: coolers ICC-SUIC386 to SUIC1500 (indoor) and SUOC500 to SUOC4000 (outdoor); freezers ICC-SUIF1000 to SUIF2000 (indoor) and SUOF1000 to SUOF4000 (outdoor). Packaged (self-contained) units ICC-MBIC350 to MBIC1500 and MBIF450 to MBIF1500 are their own cooling system (see above); they need no condensing unit and nothing can connect to them.
 
-Customers add units freely; the model list greys out what doesn't fit, with the reason. Rules (John's notes, `MAX_EVAPS_PER_CU`, `CU_MATCH`): one unit serves at most 3 evaporators indoors and 2 outdoors for coolers, 1 for freezers; capacity must cover the combined evaporator load, with under 75% blocked (ICC's same-number matched pairs, e.g. EVC1000 + SUIC1000, run 77-93%) and over 125% warned as short-cycling; same-number pairs are marked "matched pair" and chosen first. **Add condensing unit** takes unserved evaporators while a model can still carry them, indoor on an indoor site (switching to outdoor when no indoor unit is big enough, as for EVC2000 and up) and outdoor on an outdoor site; **Match all evaporators** repeats until every split evaporator is served. Indoor units sit on the roof above their first evaporator; outdoor units stand outside its wall, 12" clear, facing out; both can be dragged on the plan and turned. A shared unit notes that each evaporator needs its own liquid line solenoid valve. Over 5 HP the Smart Control needs the ICC Control Box (added to the part list); the Temperature Controller warns on 220V units. Units are simple boxes until artwork arrives.
+Customers add units freely; the model list greys out what doesn't fit, with the reason. Rules (John's notes, `MAX_EVAPS_PER_CU`, `CU_MATCH`): one unit serves at most 3 evaporators indoors and 2 outdoors for coolers, 1 for freezers; capacity must cover the combined evaporator load, with under 75% blocked (ICC's same-number matched pairs, e.g. EVC1000 + SUIC1000, run 77-93%) and over 125% warned as short-cycling; same-number pairs are marked "matched pair" and chosen first. **Add condensing unit** takes unserved evaporators while a model can still carry them, indoor on an indoor site (switching to outdoor when no indoor unit is big enough, as for EVC2000 and up) and outdoor on an outdoor site; **Match all evaporators** repeats until every split evaporator is served. Indoor units sit on the roof above their first evaporator; outdoor units stand outside its wall, 12" clear, facing out; both can be dragged on the plan and turned. A shared unit notes that each evaporator needs its own liquid line solenoid valve. Over 5 HP the Smart Control needs the ICC Control Box (added to the part list); the Temperature Controller warns on 220V units. Units are modelled from ICC's drawings (see above).
 
 ## Controller
 

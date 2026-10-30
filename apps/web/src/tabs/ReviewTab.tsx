@@ -190,6 +190,7 @@ function CompartmentSummary({ c, tree, site }: { c: Compartment; tree: Component
     ['Doors', `${c.doors.filter((d) => d.family !== 'glass').length || 'None'}`],
     ['Glass doors', `${c.doors.filter((d) => d.family === 'glass').length || 'None'}`],
     ['Ramps', ramps ? `${ramps}` : 'None'],
+    ['Cooling system', c.system === 'packaged' ? 'Packaged (monoblock)' : 'Split system'],
     ['Condensing units', c.condensers.length ? c.condensers.map((u) => getCondenser(u.model).sku).join(', ') : 'None'],
     ['Evaporators', c.evaporators.length ? `${c.evaporators.length}, ${c.evaporators.reduce((n, e) => n + getEvaporator(e.model).btu, 0).toLocaleString('en-US')} BTU/h total` : 'None'],
     ['Controller', ctl ? `${ctl.label} ${ctl.sku}` : 'None'],

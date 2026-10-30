@@ -17,7 +17,42 @@ import { type WallFrame, findFrontEdge, wallFrames } from './walls';
 import { doorOpening } from './doors';
 import { shelvingRect } from './shelving';
 
-export const requiredGap = (model: string) => Math.max(EVAP_RULES.minRearGap, getEvaporator(model).height);
+/**
+ * Clear space between the wall and the unit. Split evaporators: at least the
+ * coil height (return air), never under 12". Packaged plugs: 6" of ceiling
+ * between the cut-out and the wall.
+ */
+export const requiredGap = (model: string) => {
+  const d = getEvaporator(model);
+  return d.kind === 'packaged' ? PACKAGED_WALL_GAP : Math.max(EVAP_RULES.minRearGap, d.height);
+};
+export const PACKAGED_WALL_GAP = 152.4;
+
+/**
+ * A packaged unit's roof cabinet on the plan: the cabinet runs along the wall,
+ * offset from the plug as the drawing shows, centred on the plug's depth.
+ */
+export function packagedCabinet(c: Compartment, e: Evaporator): Vec2[] | null {
+  const def = getEvaporator(e.model);
+  const s = def.packagedShape;
+  if (!s) return null;
+  const p = evaporatorPlan(c, e);
+  const u = p.frame.u;
+  const inch = 25.4;
+  // Cabinet centre: plug centre shifted back along the wall by the plug's offset.
+  // Local +x of the unit runs opposite to the wall's u (as seen from inside, facing the wall).
+  const cx = p.center[0] + u[0] * s.plugX * inch;
+  const cy = p.center[1] + u[1] * s.plugX * inch;
+  const hw = (s.w * inch) / 2;
+  const hd = (s.bracketD * inch) / 2;
+  const n = p.into;
+  return [
+    [cx - u[0] * hw - n[0] * hd, cy - u[1] * hw - n[1] * hd],
+    [cx + u[0] * hw - n[0] * hd, cy + u[1] * hw - n[1] * hd],
+    [cx + u[0] * hw + n[0] * hd, cy + u[1] * hw + n[1] * hd],
+    [cx - u[0] * hw + n[0] * hd, cy - u[1] * hw + n[1] * hd],
+  ];
+}
 
 const fpOf = (c: Compartment) => footprint(c.shape, c.boxW, c.boxD, c.notchW, c.notchD);
 const framesOf = (c: Compartment) => wallFrames(fpOf(c), c.wallThickness);
@@ -108,7 +143,14 @@ export function checkEvaporator(c: Compartment, e: Evaporator): EvapCheck {
   }
   if (a0 < -0.5 || a1 > f.length + 0.5) errors.push('runs past the end of its wall');
   const need = requiredGap(e.model);
-  if (e.gap < need - 0.5) errors.push(`needs ${inch(need)} behind it for return air (the coil height, at least 12"); it has ${inch(e.gap)}`);
+  if (def.kind === 'packaged') {
+    if (e.gap < need - 0.5) errors.push(`needs ${inch(need)} of ceiling between its cut-out and the wall; it has ${inch(e.gap)}`);
+    const cab = packagedCabinet(c, e);
+    const outer = fpOf(c);
+    if (cab && !cab.every((q) => insidePoly(outer, q))) errors.push('has its roof cabinet hanging off the roof; move it along the wall or onto another wall');
+  } else if (e.gap < need - 0.5) {
+    errors.push(`needs ${inch(need)} behind it for return air (the coil height, at least 12"); it has ${inch(e.gap)}`);
+  }
   // The whole unit inside the room
   const inner = innerOf(c);
   if (!p.corners.every((q) => insidePoly(inner, q))) errors.push('is outside the room');
@@ -238,7 +280,7 @@ function bestSpot(c: Compartment, existing: Evaporator[], model: string, grid: C
       const e: Evaporator = { id, model, wall: f.edge, offset: off, gap };
       const trial = { ...c, evaporators: [...existing, e] };
       const chk = checkEvaporator(trial, e);
-      if (chk.errors.some((m) => /over a door|outside the room|overlaps|past the end/.test(m))) continue;
+      if (chk.errors.some((m) => /over a door|outside the room|overlaps|past the end|off the roof/.test(m))) continue;
       const r = reach(c, e, grid, inner);
       let gain = 0;
       r.forEach((h, i) => h && !covered[i] && gain++);
@@ -316,7 +358,14 @@ function evenOut(c: Compartment, list: Evaporator[]): Evaporator[] {
 }
 
 export function defaultModel(c: Compartment): string {
+  if (c.system === 'packaged') return c.temperature === 'freezer' ? 'ICC-MBIF1000' : 'ICC-MBIC1000';
   return c.temperature === 'freezer' ? 'ICC-EVF1500' : 'ICC-EVC1500';
+}
+
+/** Switch the cooling system; units of the other system are removed (undoable). */
+export function setSystem(c: Compartment, system: Compartment['system']): Compartment {
+  if (c.system === system) return c;
+  return { ...c, system, evaporators: [], condensers: [] };
 }
 
 export function updateEvaporator(c: Compartment, id: string, patch: Partial<Evaporator>): Compartment {

@@ -394,6 +394,7 @@ export interface EvaporatorDef {
   fla?: number;
   lra?: number;
   compressor?: string;
+  packagedShape?: PackagedShape;
   btu: number;
   fans: number;
   cfmPerFan: number;
@@ -447,15 +448,40 @@ export const EVAPORATORS: readonly EvaporatorDef[] = [
 ];
 
 /**
- * Packaged (self-contained) units: a condensing section on the roof and an
- * evaporator section that drops through the ceiling. Sizes are ESTIMATES: the
- * part inside (what the placement rules see) about 22" × 9" × 14".
+ * Packaged (monoblock) unit shape from ICC's drawings, sizes in INCHES: a cabinet
+ * on the roof (condenser section with louvres + evaporator section) and a plug
+ * through the ceiling cut-out. The plug is what the placement rules see; air
+ * leaves its side facing the room. `plugX` is the plug centre's offset from the
+ * cabinet centre along its width; `condenser` says which end holds the louvres.
  */
+export interface PackagedShape {
+  w: number;
+  d: number;
+  h: number;
+  bracketD: number;
+  plugW: number;
+  plugD: number;
+  plugH: number;
+  plugX: number;
+  condW: number;
+  condenser: 'left' | 'right';
+  drawing: string;
+}
+export const PACKAGED_SHAPES: Record<'small' | 'large', PackagedShape> = {
+  // MBIC350-1500 and MBIF450
+  small: { w: mmIn(1148), d: mmIn(670), h: mmIn(482), bracketD: mmIn(720), plugW: mmIn(624), plugD: mmIn(584), plugH: mmIn(110), plugX: mmIn(226), condW: mmIn(467), condenser: 'left', drawing: 'ICC-MBIC350…1500, MBIF450' },
+  // MBIF600/1000/1500
+  large: { w: mmIn(1295), d: mmIn(790), h: mmIn(550), bracketD: mmIn(840), plugW: mmIn(651), plugD: mmIn(692), plugH: mmIn(110), plugX: mmIn(-273), condW: mmIn(551), condenser: 'right', drawing: 'ICC-MBIF600/1000/1500' },
+};
+
 function packaged(sku: string, line: EvapLine, btu: number, hp: number, evapCfm: number, condCfm: number, rla: number, fla: number, lra: number, compressor: string, minCircuit: number): EvaporatorDef {
+  const shape = PACKAGED_SHAPES[/MBIF(600|1000|1500)/.test(sku) ? 'large' : 'small'];
   return {
     sku, line, kind: 'packaged', btu, fans: 1, cfmPerFan: evapCfm, volts: '220V/1ph/60Hz', minCircuit,
     txv: '—', hp, condenserCfm: condCfm, refrigerants: 'R448A, R404A, R449A', rla, fla, lra, compressor,
-    length: inToMm(22), height: inToMm(9), depth: inToMm(14), fanDiameter: inToMm(8), sizeEstimated: true,
+    // The plug is the part inside: its width along the wall, depth into the room, height through the ceiling.
+    length: inToMm(shape.plugW), height: inToMm(shape.plugH), depth: inToMm(shape.plugD), fanDiameter: inToMm(10), sizeEstimated: false,
+    packagedShape: shape,
   };
 }
 
@@ -512,14 +538,60 @@ export const EVAP_RULES = {
  * CONFIRM, values that look off on the pages: SUOC1000 compressor "NT622GK"
  * (NT6226GK elsewhere); SUIF2000 compressor YF41E7G vs SUOF2000 YF41E3G with the
  * same rating; SUIF1000 at 3 HP for 8,913 BTU/h.
- * Sizes are ESTIMATES until spec sheets arrive.
+ * Sizes come from ICC's drawings (see CondenserShape).
  */
 export type CondenserType = 'indoor' | 'outdoor';
+
+/**
+ * Shape family from ICC's general-arrangement drawings, sizes in INCHES
+ * (converted from the drawings' millimetres). Models without their own drawing
+ * use the nearest family: SUIC386/530/700 → SUIC500 drawing, SUOC700 → SUOC500.
+ */
+export interface CondenserShape {
+  /** Overall width, depth, height (in), height including base plate or feet. */
+  w: number;
+  d: number;
+  h: number;
+  /** Indoor: base plate thickness. Outdoor: feet height. */
+  base: number;
+  /** Outdoor: depth across the feet. */
+  feetD?: number;
+  /** Outdoor 2-fan units stack their fans vertically; indoor ones sit side by side. */
+  fanLayout: 'single' | 'side' | 'stack';
+  drawing: string;
+}
+
+/** Drawing millimetres to inches, to 0.01". */
+function mmIn(v: number) {
+  return Math.round((v / 25.4) * 100) / 100;
+}
+const SHAPES_CU: Record<string, CondenserShape> = {
+  // Indoor open-frame units on a base plate
+  SUIC500: { w: mmIn(600), d: mmIn(650), h: mmIn(474), base: mmIn(40), fanLayout: 'single', drawing: 'ICC-SUIC500/1000/1500' },
+  SUIF1000: { w: mmIn(700), d: mmIn(650), h: mmIn(570), base: mmIn(40), fanLayout: 'single', drawing: 'ICC-SUIF1000' },
+  SUIF1500: { w: mmIn(950), d: mmIn(700), h: mmIn(540), base: mmIn(40), fanLayout: 'side', drawing: 'ICC-SUIF1500' },
+  SUIF2000: { w: mmIn(1030), d: mmIn(700), h: mmIn(719), base: mmIn(40), fanLayout: 'side', drawing: 'ICC-SUIF2000' },
+  // Outdoor slim cabinets on feet
+  SUOC500: { w: mmIn(1094), d: mmIn(351), h: mmIn(570.2), base: mmIn(45), feetD: mmIn(423.58), fanLayout: 'single', drawing: 'ICC-SUOC500/1000/1500' },
+  SUOC2000: { w: mmIn(1287), d: mmIn(437.4), h: mmIn(695), base: mmIn(50), feetD: mmIn(510), fanLayout: 'single', drawing: 'ICC-SUOC2000/3000, SUOF1000' },
+  SUOC4000: { w: mmIn(1287.4), d: mmIn(437.4), h: mmIn(995), base: mmIn(50), feetD: mmIn(510), fanLayout: 'stack', drawing: 'ICC-SUOC4000, SUOF1500/2000' },
+  SUOF3000: { w: mmIn(1403), d: mmIn(533), h: mmIn(1208.6), base: mmIn(30), feetD: mmIn(560), fanLayout: 'stack', drawing: 'ICC-SUOF3000' },
+  SUOF4000: { w: mmIn(1403), d: mmIn(533), h: mmIn(1408.6), base: mmIn(30), feetD: mmIn(560), fanLayout: 'stack', drawing: 'ICC-SUOF4000' },
+};
+const SHAPE_OF: Record<string, string> = {
+  'ICC-SUIC386': 'SUIC500', 'ICC-SUIC500': 'SUIC500', 'ICC-SUIC530': 'SUIC500', 'ICC-SUIC700': 'SUIC500', 'ICC-SUIC1000': 'SUIC500', 'ICC-SUIC1500': 'SUIC500',
+  'ICC-SUIF1000': 'SUIF1000', 'ICC-SUIF1500': 'SUIF1500', 'ICC-SUIF2000': 'SUIF2000',
+  'ICC-SUOC500': 'SUOC500', 'ICC-SUOC700': 'SUOC500', 'ICC-SUOC1000': 'SUOC500', 'ICC-SUOC1500': 'SUOC500',
+  'ICC-SUOC2000': 'SUOC2000', 'ICC-SUOC3000': 'SUOC2000', 'ICC-SUOF1000': 'SUOC2000',
+  'ICC-SUOC4000': 'SUOC4000', 'ICC-SUOF1500': 'SUOC4000', 'ICC-SUOF2000': 'SUOC4000',
+  'ICC-SUOF3000': 'SUOF3000', 'ICC-SUOF4000': 'SUOF4000',
+};
 
 export interface CondenserDef {
   sku: string;
   line: EvapLine;
   type: CondenserType;
+  shape: CondenserShape;
   btu: number;
   hp: number;
   fans: number;
@@ -531,24 +603,20 @@ export interface CondenserDef {
   compressor: string;
   minCircuit: number;
   highPressure: number;
-  /** Estimated size: width, height, depth (mm). */
+  /** From the drawing family (mm): width, height, and depth (outdoor: across the feet). */
   width: number;
   height: number;
   depth: number;
 }
 
 function cu(sku: string, line: EvapLine, type: CondenserType, btu: number, hp: number, fans: number, cfmPerFan: number, volts: string, rla: number, fla: number, lra: number, compressor: string, minCircuit: number): CondenserDef {
-  // Size estimates: indoor cabinets grow with fans; outdoor slim cabinets by fan count and airflow.
-  const big = cfmPerFan >= 3000;
-  const w = type === 'indoor' ? (fans > 1 ? 30 : 20) : fans > 1 ? 52 : big ? 40 : 34;
-  const h = type === 'indoor' ? 20 : big ? 26 : 22;
-  const d = type === 'indoor' ? 18 : 14;
+  const shape = SHAPES_CU[SHAPE_OF[sku]];
   return {
-    sku, line, type, btu, hp, fans, cfmPerFan, volts, rla, fla, lra, compressor, minCircuit,
+    sku, line, type, shape, btu, hp, fans, cfmPerFan, volts, rla, fla, lra, compressor, minCircuit,
     highPressure: type === 'indoor' ? 597.63 : 507.63,
-    width: inToMm(w),
-    height: inToMm(h),
-    depth: inToMm(d),
+    width: inToMm(shape.w),
+    height: inToMm(shape.h),
+    depth: inToMm(shape.feetD ?? shape.d),
   };
 }
 

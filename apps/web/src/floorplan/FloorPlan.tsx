@@ -37,6 +37,7 @@ import {
   getCondenser,
   updateCondenser,
   evaporatorPlan,
+  packagedCabinet,
   evaporatorThrow,
   getEvaporator,
   updateEvaporator,
@@ -383,6 +384,18 @@ function draw(ctx: CanvasRenderingContext2D, c: Compartment, view: View, mode: M
     if (!pl.frame) continue;
     const sel = mode === 'evaporators' && e.id === evap;
     const faint = mode !== 'evaporators';
+    // Packaged units: the roof cabinet, dashed, around the plug.
+    const cab = packagedCabinet(c, e);
+    if (cab) {
+      ctx.beginPath();
+      cab.map((q) => P(q)).forEach((q, i) => (i ? ctx.lineTo(...q) : ctx.moveTo(...q)));
+      ctx.closePath();
+      ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = sel ? '#0e9aa7' : '#64748b';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     const pts = pl.corners.map((q) => P(q));
     ctx.beginPath();
     pts.forEach((q, i) => (i ? ctx.lineTo(...q) : ctx.moveTo(...q)));

@@ -1009,53 +1009,37 @@ function evaporatorParts(c: Compartment, e: Compartment['evaporators'][number], 
   return out;
 }
 
-const UNIT_GREY = '#dfe2e4';
-const UNIT_DARK = '#4a4f55';
-const BADGE = '#1f2a33';
-const COPPER = '#b87333';
 
 /**
- * Packaged (self-contained) unit, as simple boxes until artwork arrives: the
- * evaporator section hangs just under the ceiling against its wall (that is
- * what the placement rules and throw use), the condensing section sits on the
- * roof above it with louvres and the ICC badge.
+ * Packaged (monoblock) unit, built by the viewer from ICC's drawing sizes: the
+ * cabinet on the roof and the plug through the ceiling. The model's origin is
+ * the plug's centre on the roof surface; local +z is the way air leaves the plug.
  */
 function packagedParts(
   c: Compartment,
   e: Compartment['evaporators'][number],
   p: ReturnType<typeof evaporatorPlan>,
   b: { cx: number; cy: number },
-  top: number,
+  _top: number,
   fTop: number,
   wallH: number,
   label: string,
 ): Part[] {
-  const def = p.def;
-  const rot = Math.atan2(p.into[0], p.into[1]);
-  const id = (s: string) => `${c.id}:evap-${e.id}:${s}`;
-  const x = p.center[0] - b.cx;
-  const z = p.center[1] - b.cy;
-  const box = (name: string, lz: number, y: number, size: Vec3, color: string, extra: Partial<BoxPart> = {}): BoxPart => ({
-    kind: 'unit',
-    id: id(name),
-    center: [x + p.into[0] * lz, y, z + p.into[1] * lz],
-    size,
-    rotationY: rot,
-    color,
-    label,
-    ...extra,
-  });
+  const s = p.def.packagedShape!;
   const roof = fTop + wallH + c.wallThickness;
-  const R = { w: inToMm(30), h: inToMm(16), d: inToMm(22) };
   return [
-    // Inside: the evaporator section, fan facing the room
-    box('drop', 0, top - def.height / 2, [def.length, def.height, def.depth], UNIT_GREY),
-    { kind: 'fan', id: id('fan'), center: [x + p.into[0] * (def.depth / 2 + 6), top - def.height / 2, z + p.into[1] * (def.depth / 2 + 6)], radius: def.fanDiameter / 2, height: 12, axis: 'z', rotationY: rot, label },
-    // Through the ceiling, then the condensing section on the roof
-    box('neck', 0, (top + roof) / 2, [def.length * 0.8, roof - top, def.depth * 0.8], UNIT_DARK),
-    box('roof-cabinet', 0, roof + R.h / 2, [R.w, R.h, R.d], UNIT_GREY),
-    box('louvre', -R.d / 2 - 2, roof + R.h / 2, [R.w * 0.38, R.h * 0.7, 4], UNIT_DARK),
-    box('badge', R.d / 2 + 2, roof + R.h / 2, [inToMm(4.5), inToMm(5), 3], BADGE, { logo: true }),
+    {
+      kind: 'model',
+      id: `${c.id}:evap-${e.id}:model`,
+      model: 'PACKAGED',
+      center: [p.center[0] - b.cx, roof, p.center[1] - b.cy],
+      rotationY: Math.atan2(p.into[0], p.into[1]),
+      params: {
+        w: s.w, d: s.d, h: s.h, bracketD: s.bracketD, plugW: s.plugW, plugD: s.plugD, plugH: s.plugH,
+        plugX: s.plugX, condW: s.condW, condLeft: s.condenser === 'left' ? 1 : 0, ceiling: c.wallThickness / 25.4,
+      },
+      label,
+    },
   ];
 }
 
@@ -1068,54 +1052,20 @@ function packagedParts(
  */
 function condenserParts(c: Compartment, u: Compartment['condensers'][number], b: { cx: number; cy: number }, fTop: number): Part[] {
   const def = getCondenser(u.model);
-  const rot = (u.rotation * Math.PI) / 180;
-  const fx = Math.sin(rot);
-  const fz = Math.cos(rot); // local +z (front)
-  const sx = Math.cos(rot);
-  const sz = -Math.sin(rot); // local +x
-  const x0 = u.x - b.cx;
-  const z0 = u.y - b.cy;
-  const at = (lx: number, y: number, lz: number): Vec3 => [x0 + sx * lx + fx * lz, y, z0 + sz * lx + fz * lz];
-  const id = (s: string) => `${c.id}:cu-${u.id}:${s}`;
+  const sh = def.shape;
   const label = `Condensing unit ${u.id.replace('cu', 'CU')} · ${def.sku} · ${def.btu.toLocaleString('en-US')} BTU/h · ${def.hp} HP`;
-  const box = (name: string, lx: number, y: number, lz: number, size: Vec3, color: string, extra: Partial<BoxPart> = {}): BoxPart => ({
-    kind: 'unit',
-    id: id(name),
-    center: at(lx, y, lz),
-    size,
-    rotationY: rot,
-    color,
-    label,
-    ...extra,
-  });
-  const W = def.width;
-  const H = def.height;
-  const D = def.depth;
-  const out: Part[] = [];
-  if (def.type === 'indoor') {
-    const roof = fTop + c.height + c.wallThickness;
-    const plate = 38;
-    out.push(box('plate', 0, roof + plate / 2, 0, [W * 1.6, plate, D * 1.5], UNIT_GREY));
-    const y = roof + plate + H / 2;
-    out.push(box('cabinet', W * 0.15, y, 0, [W * 0.8, H, D], UNIT_GREY));
-    out.push(box('coil', W * 0.15 - W * 0.4 - 4, y, 0, [8, H * 0.92, D * 0.92], COPPER));
-    out.push(box('compressor', -W * 0.55, roof + plate + H * 0.3, 0, [W * 0.45, H * 0.6, D * 0.7], UNIT_DARK));
-    out.push(box('badge', W * 0.15, y + H * 0.05, D / 2 + 2, [inToMm(4.5), inToMm(5), 3], BADGE, { logo: true }));
-  } else {
-    const leg = inToMm(4);
-    const y = leg + H / 2; // on the ground, outside
-    out.push(box('cabinet', 0, y, 0, [W, H, D], UNIT_GREY));
-    for (const s of [-1, 1]) out.push(box(`leg-${s}`, s * (W / 2 - inToMm(3)), leg / 2, 0, [inToMm(2), leg, D * 1.2], UNIT_DARK));
-    out.push(box('louvre', -W / 2 - 2, y, 0, [4, H * 0.85, D * 0.8], UNIT_DARK));
-    const fanR = Math.min(H * 0.38, (W * (def.fans > 1 ? 0.3 : 0.55)) / 2);
-    const fanArea = W * (def.fans > 1 ? 0.7 : 0.6);
-    for (let i = 0; i < def.fans; i++) {
-      const lx = -W / 2 + (fanArea / def.fans) * (i + 0.5);
-      out.push({ kind: 'fan', id: id(`fan-${i + 1}`), center: at(lx, y, D / 2 + 8), radius: fanR, height: 14, axis: 'z', rotationY: rot, label });
-    }
-    const doorW = W - fanArea - inToMm(1);
-    out.push(box('door', W / 2 - doorW / 2 - inToMm(0.5), y, D / 2 + 3, [doorW, H * 0.9, 6], UNIT_GREY));
-    out.push(box('badge', W / 2 - doorW / 2 - inToMm(0.5), y + H * 0.05, D / 2 + 8, [inToMm(5), inToMm(5.5), 3], BADGE, { logo: true }));
-  }
-  return out;
+  // Indoor units sit on the roof; outdoor units on the ground outside.
+  const y = def.type === 'indoor' ? fTop + c.height + c.wallThickness : 0;
+  return [
+    {
+      kind: 'model',
+      id: `${c.id}:cu-${u.id}:model`,
+      model: def.type === 'indoor' ? 'CU-INDOOR' : 'CU-OUTDOOR',
+      center: [u.x - b.cx, y, u.y - b.cy],
+      rotationY: (u.rotation * Math.PI) / 180,
+      // Sizes in inches, from the drawing family.
+      params: { w: sh.w, d: sh.d, h: sh.h, base: sh.base, feetD: sh.feetD ?? sh.d, fans: def.fans, stack: sh.fanLayout === 'stack' ? 1 : 0 },
+      label,
+    },
+  ];
 }

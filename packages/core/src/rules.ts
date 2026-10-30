@@ -109,7 +109,9 @@ export function normalizeCompartment(c: Compartment): Compartment {
   // Evaporators follow the compartment's temperature: a cooler model in a freezer
   // swaps to the freezer model nearest in capacity, and back.
   const line = base.temperature;
-  const evaporators = base.evaporators.map((e) => {
+  // Only units of the chosen system: split evaporators, or packaged units.
+  const wantKind = base.system === 'packaged' ? 'packaged' : 'split';
+  const evaporators = base.evaporators.filter((e) => getEvaporator(e.model).kind === wantKind).map((e) => {
     const def = getEvaporator(e.model);
     if (def.line === line && def.sku === e.model) return e;
     const options = CEILING_UNITS.filter((x) => x.line === line && x.kind === def.kind);
@@ -120,7 +122,7 @@ export function normalizeCompartment(c: Compartment): Compartment {
   // gone or packaged, and let each evaporator belong to one unit only (first wins).
   const splitIds = new Set(evaporators.filter((e) => getEvaporator(e.model).kind === 'split').map((e) => e.id));
   const taken = new Set<string>();
-  const condensers = base.condensers.map((u) => {
+  const condensers = (base.system === 'packaged' ? [] : base.condensers).map((u) => {
     let model = u.model;
     const def = getCondenser(model);
     if (def.line !== line) {
@@ -249,16 +251,17 @@ export function validateCompartment(c: Compartment, site: 'indoor' | 'outdoor' =
   });
 
   if (!c.evaporators.length) {
-    issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: 'This compartment has no evaporator.' });
+    issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: c.system === 'packaged' ? 'This compartment has no packaged unit.' : 'This compartment has no evaporator.' });
   }
   c.evaporators.forEach((e) => {
     const tag = e.id.replace('ev', 'E');
     const sku = getEvaporator(e.model).sku;
+    const what = getEvaporator(e.model).kind === 'packaged' ? 'Packaged unit' : 'Evaporator';
     const chk = checkEvaporator(c, e);
     const target = [{ type: 'part' as const, id: `${c.id}:evap-${e.id}` }];
-    chk.errors.forEach((m) => err('refrigeration', `Evaporator ${tag} (${sku}) ${m}.`, undefined, target));
+    chk.errors.forEach((m) => err('refrigeration', `${what} ${tag} (${sku}) ${m}.`, undefined, target));
     chk.warnings.forEach((m) =>
-      issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `Evaporator ${tag} (${sku}) ${m}.`, targets: target }),
+      issues.push({ compartmentId: id, tab: 'refrigeration', severity: 'warning', message: `${what} ${tag} (${sku}) ${m}.`, targets: target }),
     );
   });
 

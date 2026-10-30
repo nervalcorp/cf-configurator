@@ -7,6 +7,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EVAP_RULES, type ComponentTree, type Compartment, type ExteriorFinish, bounds, evaporatorPlan, footprint, offsetPolygon } from '@wic/core';
 import { type AirRoom, Airflow } from './airflow';
+import { setUnitBadge } from './unitModels';
 import { activeBrand } from '../theme/brands';
 import { Materials, Skin } from './materials';
 import { withDpi } from './png';
@@ -101,6 +102,7 @@ export class SceneController {
     this.scene.add(grid);
 
     this.model.scale.setScalar(MM);
+    setUnitBadge(this.mats.badgeFace);
     this.airflow.points.visible = false;
     this.scene.add(this.airflow.points);
     this.mats.checker.map = checkerTexture();
